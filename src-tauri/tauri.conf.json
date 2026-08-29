@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Instagram Agent",
+  "version": "0.2.0",
+  "identifier": "ru.local.instagram-agent-n8n",
+  "build": {
+    "beforeDevCommand": "pnpm dev:frontend",
+    "beforeBuildCommand": "pnpm prepare:desktop && pnpm build",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Instagram Agent",
+        "width": 1120,
+        "height": 820,
+        "minWidth": 390,
+        "minHeight": 700
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "resources": {
+      "../desktop-runtime/node": "runtime/node",
+      "../desktop-runtime/package.json": "runtime/package.json",
+      "../desktop-runtime/backend/": "runtime/backend/",
+      "../desktop-runtime/automation/": "runtime/automation/",
+      "../desktop-runtime/node_modules/": "runtime/node_modules/"
+    },
+    "icon": [
+      "icons/icon.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ]
+  }
+}

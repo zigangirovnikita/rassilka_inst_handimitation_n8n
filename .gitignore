@@ -1,0 +1,13 @@
+node_modules/
+desktop-runtime/
+dist/
+storage/
+profiles/
+src-tauri/target/
+src-tauri/gen/
+.DS_Store
+.env
+*.env
+*.log
+installers/*.dmg
+!installers/.gitkeep
