@@ -14,7 +14,7 @@ import {
 import { buildLocalAccountDraft, deleteLocalAccount, getAccount, upsertAccount } from './profileStore.js';
 import { initDatabase } from './storage.js';
 
-const PORT = Number(process.env.PORT || 8731);
+const PORT = Number(process.env.PORT || 8732);
 const appRoot = process.env.RASSILKA_APP_ROOT || process.cwd();
 const db = initDatabase(join(appRoot, 'storage', 'agent.sqlite'));
 const runningProfiles = new Set();

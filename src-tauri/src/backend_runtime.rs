@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
-const BACKEND_ADDRESS: &str = "127.0.0.1:8731";
+const BACKEND_ADDRESS: &str = "127.0.0.1:8732";
 
 pub struct BackendRuntime(pub Mutex<Option<Child>>);
 

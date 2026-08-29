@@ -51,3 +51,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `src-tauri/tauri.conf.json`, `scripts/package-mac-dmg.mjs`, `README.md`, `docs/BUG_FIX_LOG.md`.
 - Verification: Tauri build and DMG verification.
 - Do not regress: Keep this app visibly distinct from the older `rassilka` application.
+
+## 2026-08-29 - Dedicated Backend Port
+
+- Area: backend/frontend/tauri
+- Symptoms: The standalone executor could see an older app backend on `127.0.0.1:8731` and mistakenly treat it as its own backend.
+- Root cause: The split reused the old backend port and the same health service marker.
+- Fix: Moved this standalone app default backend port to `127.0.0.1:8732` in backend, frontend, and Tauri readiness checks.
+- Files changed: `backend/server.js`, `frontend/src/api.js`, `src-tauri/src/backend_runtime.rs`, `README.md`, `docs/BUG_FIX_LOG.md`.
+- Verification: `pnpm check`, `pnpm build`, `cargo check`, Tauri build, DMG verification.
+- Do not regress: Do not move the standalone n8n executor back to `8731`; that port belongs to the older app.
