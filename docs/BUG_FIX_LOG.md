@@ -41,3 +41,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `frontend/src/api.js`, `README.md`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm build`, UI smoke test against a temporary backend port.
 - Do not regress: Keep the installed app default on `8731`, but allow local tests to point at an isolated backend.
+
+## 2026-08-29 - Distinct Mac App Name
+
+- Area: packaging
+- Symptoms: The standalone n8n executor used the same visible macOS app name as the older Instagram Agent app.
+- Root cause: The initial split reused the old product name.
+- Fix: Renamed the packaged app, window title, DMG volume, and installer filename to `Instagram Agent n8n`.
+- Files changed: `src-tauri/tauri.conf.json`, `scripts/package-mac-dmg.mjs`, `README.md`, `docs/BUG_FIX_LOG.md`.
+- Verification: Tauri build and DMG verification.
+- Do not regress: Keep this app visibly distinct from the older `rassilka` application.

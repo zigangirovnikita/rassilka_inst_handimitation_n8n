@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Instagram Agent",
+  "productName": "Instagram Agent n8n",
   "version": "0.2.0",
   "identifier": "ru.local.instagram-agent-n8n",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Instagram Agent",
+        "title": "Instagram Agent n8n",
         "width": 1120,
         "height": 820,
         "minWidth": 390,

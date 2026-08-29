@@ -14,7 +14,7 @@
 ## Установка на Mac
 
 1. Скачайте DMG из GitHub Releases.
-2. Откройте DMG и перенесите `Instagram Agent.app` в `Applications`.
+2. Откройте DMG и перенесите `Instagram Agent n8n.app` в `Applications`.
 3. Запустите приложение.
 4. Нажмите `Добавить профиль`, войдите в Instagram в открывшемся Chrome и дождитесь, пока приложение определит username.
 5. Вставьте webhook n8n, задайте лимиты и нажмите `Включить рассылку`.
