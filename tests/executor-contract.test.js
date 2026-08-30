@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { classifyNextTaskResponse } from '../automation/n8nExecutorResponse.js';
@@ -91,7 +92,7 @@ test('builds target URL from username instead of trusting n8n target_url', () =>
 });
 
 function makeDb() {
-  const root = mkdtempSync('/tmp/instagram-agent-n8n-test-');
+  const root = mkdtempSync(join(tmpdir(), 'instagram-agent-n8n-test-'));
   const db = initDatabase(join(root, 'storage', 'agent.sqlite'));
   return {
     db,
