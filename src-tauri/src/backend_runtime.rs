@@ -11,6 +11,17 @@ const BACKEND_ADDRESS: &str = "127.0.0.1:8732";
 
 pub struct BackendRuntime(pub Mutex<Option<Child>>);
 
+impl Drop for BackendRuntime {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.0.lock() {
+            if let Some(child) = guard.as_mut() {
+                terminate_child(child);
+            }
+            *guard = None;
+        }
+    }
+}
+
 pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
     if backend_is_ready() {
         return Ok(None);

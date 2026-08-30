@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let child = backend_runtime::start(&app.handle())?;
@@ -19,6 +19,14 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+            if let Some(runtime) = app_handle.try_state::<BackendRuntime>() {
+                backend_runtime::stop(&runtime);
+            }
+        }
+    });
 }
