@@ -1,0 +1,68 @@
+name: Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag to attach the installer to
+        required: true
+        default: v0.2.0
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build Windows installer
+        run: pnpm run build:windows
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Instagram-Agent-n8n-windows-x64
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Attach installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          fail_on_unmatched_files: true
+          overwrite_files: true

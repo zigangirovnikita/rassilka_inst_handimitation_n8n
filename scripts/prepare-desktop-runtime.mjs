@@ -6,14 +6,17 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const runtimeRoot = join(projectRoot, 'desktop-runtime');
 const nodeSource = process.execPath;
+const nodeTargetName = process.platform === 'win32' ? 'node.exe' : 'node';
 
 mkdirSync(runtimeRoot, { recursive: true });
 rmSync(join(runtimeRoot, 'backend'), { recursive: true, force: true });
 rmSync(join(runtimeRoot, 'automation'), { recursive: true, force: true });
 cpSync(join(projectRoot, 'backend'), join(runtimeRoot, 'backend'), { recursive: true });
 cpSync(join(projectRoot, 'automation'), join(runtimeRoot, 'automation'), { recursive: true });
-copyFileSync(nodeSource, join(runtimeRoot, 'node'));
-chmodSync(join(runtimeRoot, 'node'), 0o755);
+rmSync(join(runtimeRoot, 'node'), { force: true });
+rmSync(join(runtimeRoot, 'node.exe'), { force: true });
+copyFileSync(nodeSource, join(runtimeRoot, nodeTargetName));
+chmodSync(join(runtimeRoot, nodeTargetName), 0o755);
 writeFileSync(join(runtimeRoot, 'package.json'), JSON.stringify({
   name: 'instagram-agent-n8n-runtime',
   private: true,

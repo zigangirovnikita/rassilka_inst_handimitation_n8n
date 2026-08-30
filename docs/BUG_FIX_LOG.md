@@ -81,3 +81,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `backend/apiSecurity.js`, `tests/executor-contract.test.js`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm test`, `pnpm build`, installed app API checks for `tauri://localhost`, `tauri://tauri.localhost`, and `http://tauri.localhost`.
 - Do not regress: Tauri production origins must be tested in addition to Node-based localhost smoke tests.
+
+## 2026-08-31 - Windows Installer Support
+
+- Area: desktop/packaging/automation
+- Symptoms: The app only had a macOS install path and packaged a runtime binary named `node`, which does not work as the backend launcher on Windows.
+- Root cause: The first release was built and smoke-tested only on macOS.
+- Fix: Made desktop runtime preparation write `node.exe` on Windows, made the Tauri backend launcher choose `runtime/node.exe` on Windows, hid the backend console window, packaged the whole `desktop-runtime` directory, added Windows Chrome path checks, and added a Windows GitHub Actions NSIS installer workflow.
+- Files changed: `scripts/prepare-desktop-runtime.mjs`, `src-tauri/src/backend_runtime.rs`, `src-tauri/tauri.conf.json`, `automation/instagramWorker.js`, `.github/workflows/windows-release.yml`, `package.json`, `README.md`, `AGENTS.md`, `installers/README.md`, `docs/BUG_FIX_LOG.md`.
+- Verification: Local syntax/tests/build/Rust checks on macOS plus GitHub Actions Windows build for the actual installer.
+- Do not regress: Do not hardcode the desktop runtime to macOS-only `runtime/node`; Windows release artifacts must be built on Windows.

@@ -7,7 +7,12 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 const BACKEND_ADDRESS: &str = "127.0.0.1:8732";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub struct BackendRuntime(pub Mutex<Option<Child>>);
 
@@ -30,7 +35,7 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
     let resource_dir = app.path().resource_dir().map_err(|error| error.to_string())?;
     let app_root = app.path().app_data_dir().map_err(|error| error.to_string())?;
     let runtime_dir = resource_dir.join("runtime");
-    let node_path = runtime_dir.join("node");
+    let node_path = node_executable(&runtime_dir);
     let server_path = runtime_dir.join("backend").join("server.js");
 
     fs::create_dir_all(app_root.join("logs")).map_err(|error| error.to_string())?;
@@ -41,13 +46,19 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
         .map_err(|error| error.to_string())?;
     let error_log = log.try_clone().map_err(|error| error.to_string())?;
 
-    let mut child = Command::new(node_path)
+    let mut command = Command::new(node_path);
+    command
         .arg(server_path)
         .current_dir(&app_root)
         .env("RASSILKA_APP_ROOT", &app_root)
         .env("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
         .stdout(Stdio::from(log))
-        .stderr(Stdio::from(error_log))
+        .stderr(Stdio::from(error_log));
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = command
         .spawn()
         .map_err(|error| format!("Не удалось запустить локальный backend: {error}"))?;
 
@@ -62,6 +73,17 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
     }
     let _ = child.kill();
     Err("Локальный backend не запустился за 8 секунд".to_string())
+}
+
+fn node_executable(runtime_dir: &std::path::Path) -> std::path::PathBuf {
+    #[cfg(windows)]
+    {
+        return runtime_dir.join("node.exe");
+    }
+    #[cfg(not(windows))]
+    {
+        return runtime_dir.join("node");
+    }
 }
 
 pub fn stop(runtime: &BackendRuntime) {

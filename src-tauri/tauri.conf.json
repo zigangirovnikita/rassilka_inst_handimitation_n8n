@@ -25,13 +25,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": ["app", "nsis"],
     "resources": {
-      "../desktop-runtime/node": "runtime/node",
-      "../desktop-runtime/package.json": "runtime/package.json",
-      "../desktop-runtime/backend/": "runtime/backend/",
-      "../desktop-runtime/automation/": "runtime/automation/",
-      "../desktop-runtime/node_modules/": "runtime/node_modules/"
+      "../desktop-runtime/": "runtime/"
     },
     "icon": [
       "icons/icon.png",

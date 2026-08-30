@@ -25,10 +25,11 @@ Do not copy, edit, or import the older `rassilka` product app into this reposito
 - Local frontend: `http://127.0.0.1:5173`
 - Local backend: `http://127.0.0.1:8732`
 - Main development command: `pnpm dev`
-- Checks: `pnpm check`, `pnpm build`, `cargo check` from `src-tauri`
+- Checks: `pnpm check`, `pnpm test`, `pnpm build`, `cargo check` from `src-tauri`
 - Desktop runtime: `pnpm prepare:desktop`
 - Mac app build: `pnpm exec tauri build --target aarch64-apple-darwin --bundles app`
 - DMG package: `node scripts/package-mac-dmg.mjs`
+- Windows installer build: `pnpm run build:windows` on Windows, preferably through `.github/workflows/windows-release.yml`
 
 ## Code Rules
 
@@ -52,6 +53,7 @@ Do not copy, edit, or import the older `rassilka` product app into this reposito
 - If n8n returns `no_task`, `completed`, `done`, or `all_done`, disable the executor and show `Рассылка завершена`.
 - Every n8n request has a 3 minute timeout. A timed-out task must not block the next scheduled run forever.
 - Recognize Instagram message buttons in English and Russian, including `Message`, `Send message`, `Сообщение`, `Отправить сообщение`, and `Написать`.
+- Keep desktop runtime cross-platform: macOS uses `runtime/node`, Windows uses `runtime/node.exe`; package the whole `desktop-runtime` directory.
 
 ## Webhook Contract
 

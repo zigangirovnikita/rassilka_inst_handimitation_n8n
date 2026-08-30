@@ -21,6 +21,14 @@
 
 Если DMG еще не загружен в Release, можно скачать репозиторий и запустить `installers/install-mac.command`.
 
+## Установка на Windows
+
+1. Установите Google Chrome.
+2. Скачайте Windows x64 installer `.exe` из GitHub Releases.
+3. Запустите installer и откройте `Instagram Agent n8n`.
+4. Нажмите `Добавить профиль`, войдите в Instagram в открывшемся Chrome и дождитесь, пока приложение определит username.
+5. Вставьте webhook n8n, задайте лимиты и нажмите `Включить рассылку`.
+
 ## Контракт webhook n8n
 
 Все запросы идут методом `POST` в webhook, указанный в настройках профиля. Во всех событиях есть общие поля:
@@ -164,4 +172,5 @@ pnpm build
 pnpm prepare:desktop
 pnpm exec tauri build --target aarch64-apple-darwin --bundles app
 node scripts/package-mac-dmg.mjs
+pnpm run build:windows
 ```

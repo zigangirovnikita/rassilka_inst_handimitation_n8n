@@ -7,6 +7,11 @@ const MAC_CHROME_PATHS = [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   `${process.env.HOME || ''}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
 ];
+const WINDOWS_CHROME_PATHS = [
+  `${process.env.PROGRAMFILES || ''}\\Google\\Chrome\\Application\\chrome.exe`,
+  `${process.env['PROGRAMFILES(X86)'] || ''}\\Google\\Chrome\\Application\\chrome.exe`,
+  `${process.env.LOCALAPPDATA || ''}\\Google\\Chrome\\Application\\chrome.exe`
+];
 
 export async function openChromeContext(appRoot, savedProfileDir = '', options = {}) {
   const dir = savedProfileDir || join(appRoot, 'profiles', 'igp_default');
@@ -28,6 +33,8 @@ export async function checkChromeAvailable() {
   }
   const macPath = MAC_CHROME_PATHS.find(path => path && existsSync(path));
   if (macPath) return { ok: true, executable: macPath };
+  const windowsPath = WINDOWS_CHROME_PATHS.find(path => path && !path.startsWith('\\') && existsSync(path));
+  if (windowsPath) return { ok: true, executable: windowsPath };
   let browser = null;
   try {
     browser = await chromium.launch({ channel: 'chrome', headless: true });
