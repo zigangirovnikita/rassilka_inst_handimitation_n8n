@@ -44,7 +44,8 @@ if (!modulesReady) {
   ], {
     cwd: runtimeRoot,
     env: { ...process.env, PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' },
-    stdio: 'inherit'
+    stdio: 'inherit',
+    shell: process.platform === 'win32'
   });
   if (install.error) {
     console.error(`Failed to run ${pnpmCommand}: ${install.error.message}`);
