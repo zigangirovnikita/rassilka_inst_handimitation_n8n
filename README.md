@@ -53,12 +53,11 @@ n8n должен вернуть задачу:
 ```json
 {
   "job_id": "unique-job-id",
-  "target_username": "username",
-  "target_url": "https://www.instagram.com/username/"
+  "target_username": "username"
 }
 ```
 
-`job_id` формирует n8n. Он должен быть уникальным в рамках профиля и получателя, чтобы приложение не отправило одну задачу повторно.
+`job_id` формирует n8n. Он должен быть уникальным в рамках профиля и получателя, чтобы приложение не отправило одну задачу повторно. Приложение доверяет `target_username`, валидирует его и само строит Instagram URL. `target_url` можно не отправлять.
 
 Если получателей больше нет:
 
@@ -136,6 +135,8 @@ n8n должен вернуть текст:
 
 Возможные `reason`: `no_message_button`, `login_required`, `profile_unavailable`, `message_text_empty`, `send_confirmation_missing`, `n8n_timeout`, `browser_error`.
 
+События `no_message_button`, `profile_unavailable`, `message_text_empty`, `send_confirmation_missing` и timeout после получения конкретной задачи считаются пропуском лида, а не аварией аккаунта. `login_required` и признаки Instagram checkpoint/rate-limit останавливают конкретный аккаунт.
+
 ## Разработка
 
 ```bash
@@ -151,13 +152,14 @@ pnpm dev
 Для теста на другом backend-порту можно запустить frontend так:
 
 ```bash
-VITE_API_URL=http://127.0.0.1:18731 pnpm dev:frontend
+VITE_API_URL=http://127.0.0.1:18732 pnpm dev:frontend
 ```
 
 Проверки:
 
 ```bash
 pnpm check
+pnpm test
 pnpm build
 pnpm prepare:desktop
 pnpm exec tauri build --target aarch64-apple-darwin --bundles app

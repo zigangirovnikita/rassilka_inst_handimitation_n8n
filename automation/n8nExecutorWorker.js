@@ -3,22 +3,22 @@ import {
   buildExecutorPayload,
   countSentToday,
   finishExecutorJob,
+  getRecentRecipientJob,
   getExecutorJob,
   getExecutorProfile,
+  hasAccount,
   setExecutorRuntimeState,
   upsertExecutorJob
 } from '../backend/n8nExecutorStore.js';
+import { ACCOUNT_FAILURE_REASONS, ExecutorJobError, assertNotStopped, classifyError, isLeadFailure } from './executorErrors.js';
+import { isMessageButtonLabel, openProfileAndCapture, sendInstagramMessage } from './instagramPageActions.js';
 import { openChromeContext } from './instagramWorker.js';
 import { classifyNextTaskResponse, completionMessage } from './n8nExecutorResponse.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const MAX_CONSECUTIVE_ERRORS = 3;
 const N8N_TIMEOUT_MS = 3 * 60_000;
-const MESSAGE_BUTTON_PATTERN = /^(message|send message|сообщение|отправить сообщение|написать)$/i;
-
-export function isMessageButtonLabel(label) {
-  return MESSAGE_BUTTON_PATTERN.test(String(label || '').trim());
-}
+export { isMessageButtonLabel };
 
 export async function runN8nExecutor(db, appRoot, instagramProfileId, control = {}) {
   const account = db.prepare(`
@@ -44,7 +44,7 @@ export async function runN8nExecutor(db, appRoot, instagramProfileId, control = 
     }
 
     try {
-      const taskResult = await requestNextTask(db, instagramProfileId, settings);
+      const taskResult = await requestNextTask(db, instagramProfileId, settings, control);
       if (taskResult?.completed) {
         completeExecutor(db, instagramProfileId, taskResult.message);
         break;
@@ -54,13 +54,28 @@ export async function runN8nExecutor(db, appRoot, instagramProfileId, control = 
         await waitUntilNextCheck(db, instagramProfileId, control, 60_000, 'Задач пока нет');
         continue;
       }
-      await processTask(db, appRoot, instagramProfileId, settings, taskResult.task);
+      await processTask(db, appRoot, instagramProfileId, settings, taskResult.task, control);
       setExecutorRuntimeState(db, instagramProfileId, { consecutiveErrors: 0, lastError: '' });
       if (!control.stop) await waitUntilNextMessage(db, instagramProfileId, control, settings);
     } catch (error) {
+      if (!hasAccount(db, instagramProfileId)) break;
       const current = getExecutorProfile(db, instagramProfileId);
       const consecutiveErrors = current.consecutiveErrors + 1;
       const message = error.message || String(error);
+      const reason = classifyError(error);
+      if (ACCOUNT_FAILURE_REASONS.has(reason)) {
+        setExecutorRuntimeState(db, instagramProfileId, {
+          enabled: false,
+          status: 'paused',
+          step: 'Аккаунт требует проверки',
+          nextRunAt: null,
+          currentJobId: null,
+          consecutiveErrors,
+          lastError: message
+        });
+        if (!error.executorEventLogged) logEvent(db, instagramProfileId, 'error', `Исполнитель: ${message}`);
+        break;
+      }
       setExecutorRuntimeState(db, instagramProfileId, {
         enabled: consecutiveErrors < MAX_CONSECUTIVE_ERRORS,
         status: consecutiveErrors >= MAX_CONSECUTIVE_ERRORS ? 'paused' : 'waiting',
@@ -76,6 +91,7 @@ export async function runN8nExecutor(db, appRoot, instagramProfileId, control = 
     }
   }
 
+  if (!hasAccount(db, instagramProfileId)) return;
   const final = getExecutorProfile(db, instagramProfileId);
   if (control.stop || final.enabled) {
     setExecutorRuntimeState(db, instagramProfileId, {
@@ -87,7 +103,8 @@ export async function runN8nExecutor(db, appRoot, instagramProfileId, control = 
   }
 }
 
-async function requestNextTask(db, instagramProfileId, settings) {
+async function requestNextTask(db, instagramProfileId, settings, control) {
+  assertNotStopped(control);
   setExecutorRuntimeState(db, instagramProfileId, {
     status: 'running',
     step: 'Запрашивает следующую задачу',
@@ -97,16 +114,32 @@ async function requestNextTask(db, instagramProfileId, settings) {
     sent_today: countSentToday(db, instagramProfileId),
     daily_limit: settings.dailyLimit
   });
-  const response = await postJson(settings.webhookUrl, payload, N8N_TIMEOUT_MS);
+  const response = await postJson(settings.webhookUrl, payload, N8N_TIMEOUT_MS, control);
   const responseType = classifyNextTaskResponse(response);
   if (responseType === 'completed') return { completed: true, message: completionMessage(response) };
   if (responseType === 'waiting') return { task: null };
   const task = response.task || response.job || response;
   const jobId = task.job_id || task.jobId;
   if (!jobId) return { task: null };
+  const username = normalizeUsername(task.target_username ?? task.username ?? task.instagram_username);
+  if (!username) throw new ExecutorJobError('message_text_empty', 'n8n не вернул корректный username получателя', 'lead');
   const existing = getExecutorJob(db, instagramProfileId, jobId);
-  if (existing?.status === 'sent') {
-    await postJson(settings.webhookUrl, buildExecutorPayload(db, instagramProfileId, 'duplicate_job', { job_id: jobId }), N8N_TIMEOUT_MS);
+  if (['sent', 'sending', 'uncertain'].includes(existing?.status)) {
+    await postJson(settings.webhookUrl, buildExecutorPayload(db, instagramProfileId, 'duplicate_job', {
+      job_id: jobId,
+      target_username: existing.targetUsername || username,
+      status: existing.status
+    }), N8N_TIMEOUT_MS, control).catch(() => {});
+    return { task: null };
+  }
+  const recentRecipient = getRecentRecipientJob(db, instagramProfileId, username);
+  if (recentRecipient && recentRecipient.jobId !== jobId) {
+    await postJson(settings.webhookUrl, buildExecutorPayload(db, instagramProfileId, 'duplicate_recipient', {
+      job_id: jobId,
+      existing_job_id: recentRecipient.jobId,
+      target_username: username,
+      status: recentRecipient.status
+    }), N8N_TIMEOUT_MS, control).catch(() => {});
     return { task: null };
   }
   return { task };
@@ -125,7 +158,8 @@ function completeExecutor(db, instagramProfileId, message = 'Рассылка з
   logEvent(db, instagramProfileId, 'success', message);
 }
 
-async function processTask(db, appRoot, instagramProfileId, settings, task) {
+async function processTask(db, appRoot, instagramProfileId, settings, task, control) {
+  assertNotStopped(control);
   const job = upsertExecutorJob(db, instagramProfileId, task, 'running');
   setExecutorRuntimeState(db, instagramProfileId, {
     status: 'running',
@@ -137,7 +171,9 @@ async function processTask(db, appRoot, instagramProfileId, settings, task) {
   let context = null;
   try {
     context = await openChromeContext(appRoot, account.profileDir, { interactive: false });
+    control.activeContext = context;
     const page = context.pages()[0] || await context.newPage();
+    page.setDefaultTimeout(15_000);
     const profile = await openProfileAndCapture(page, job);
     const messageResponse = await postJson(settings.webhookUrl, buildExecutorPayload(db, instagramProfileId, 'profile_opened', {
       job_id: job.jobId,
@@ -146,16 +182,18 @@ async function processTask(db, appRoot, instagramProfileId, settings, task) {
       screenshot_base64: profile.screenshotBase64,
       screenshot_mime: 'image/png',
       result: profile.result
-    }), N8N_TIMEOUT_MS);
-    if (!profile.result.can_message) throw new ExecutorJobError('no_message_button', 'Кнопка сообщения недоступна');
+    }), N8N_TIMEOUT_MS, control);
+    if (!profile.result.can_message) throw new ExecutorJobError('no_message_button', 'Кнопка сообщения недоступна', 'lead');
     const messageText = extractMessageText(messageResponse);
-    if (!messageText) throw new ExecutorJobError('message_text_empty', 'n8n не вернул текст сообщения');
+    if (!messageText) throw new ExecutorJobError('message_text_empty', 'n8n не вернул текст сообщения', 'lead');
 
+    assertNotStopped(control);
     setExecutorRuntimeState(db, instagramProfileId, {
       status: 'running',
       step: `Отправляет @${job.targetUsername || 'сообщение'}`,
       currentJobId: job.jobId
     });
+    finishExecutorJob(db, instagramProfileId, job.jobId, 'sending');
     await sendInstagramMessage(page, messageText);
     finishExecutorJob(db, instagramProfileId, job.jobId, 'sent');
     logEvent(db, instagramProfileId, 'success', `Сообщение для @${job.targetUsername} отправлено`);
@@ -163,108 +201,33 @@ async function processTask(db, appRoot, instagramProfileId, settings, task) {
       job_id: job.jobId,
       target_username: job.targetUsername,
       target_url: job.targetUrl
-    }), N8N_TIMEOUT_MS).catch(error => {
+    }), N8N_TIMEOUT_MS, control).catch(error => {
       logEvent(db, instagramProfileId, 'warning', `Сообщение для @${job.targetUsername} отправлено, но отчет не дошел`);
       console.warn('Failed to report sent status to n8n:', error.message || error);
     });
   } catch (error) {
     const reason = error.reason || classifyError(error);
-    finishExecutorJob(db, instagramProfileId, job.jobId, 'failed', reason);
+    if (reason === 'stopped') return { stopped: true };
+    if (getExecutorJob(db, instagramProfileId, job.jobId)?.status === 'sending' && !error.instagramSendRejected) {
+      finishExecutorJob(db, instagramProfileId, job.jobId, 'uncertain', reason);
+    } else {
+      finishExecutorJob(db, instagramProfileId, job.jobId, 'failed', reason);
+    }
     await postJson(settings.webhookUrl, buildExecutorPayload(db, instagramProfileId, 'failed', {
       job_id: job.jobId,
       target_username: job.targetUsername,
       target_url: job.targetUrl,
       reason,
       error: error.message || String(error)
-    }), N8N_TIMEOUT_MS).catch(() => {});
+    }), N8N_TIMEOUT_MS, control).catch(() => {});
     logEvent(db, instagramProfileId, 'error', `Сообщение для @${job.targetUsername || 'профиля'} - ошибка: ${error.message || String(error)}`);
     error.executorEventLogged = true;
+    if (isLeadFailure(reason)) return { failed: true };
     throw error;
   } finally {
+    if (control.activeContext === context) control.activeContext = null;
     if (context) await context.close().catch(() => {});
   }
-}
-
-async function openProfileAndCapture(page, job) {
-  await page.goto(job.targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await page.waitForTimeout(2500);
-  const bodyText = await page.locator('body').innerText().catch(() => '');
-  if (/log in|sign up|войдите|зарегистрируйтесь/i.test(bodyText)) {
-    throw new ExecutorJobError('login_required', 'Instagram просит повторно войти в аккаунт');
-  }
-  if (/sorry, this page isn't available|страница недоступна/i.test(bodyText)) {
-    throw new ExecutorJobError('profile_unavailable', 'Профиль недоступен');
-  }
-  await clickMoreDescription(page);
-  await page.waitForTimeout(700);
-  const screenshot = await page.screenshot({ type: 'png', fullPage: false });
-  return {
-    screenshotBase64: screenshot.toString('base64'),
-    result: {
-      can_message: await hasMessageButton(page),
-      is_private: /this account is private|это закрытый аккаунт/i.test(bodyText),
-      page_url: page.url()
-    }
-  };
-}
-
-async function clickMoreDescription(page) {
-  const more = page.getByText(/^(more|ещ[её])$/i).first();
-  if (await more.count()) {
-    await more.click({ timeout: 3000 }).catch(() => {});
-    return;
-  }
-  const button = page.getByRole('button', { name: /^(more|ещ[её])$/i }).first();
-  if (await button.count()) await button.click({ timeout: 3000 }).catch(() => {});
-}
-
-async function sendInstagramMessage(page, messageText) {
-  const messageButton = messageButtonLocator(page);
-  if (!(await messageButton.count())) throw new ExecutorJobError('no_message_button', 'Кнопка сообщения недоступна');
-  await messageButton.click({ timeout: 15_000 });
-  const textbox = await waitForMessageTextbox(page);
-  await textbox.click({ timeout: 10_000 }).catch(() => {});
-  await textbox.fill(messageText, { timeout: 10_000 });
-  const sendButton = page.getByRole('button', { name: /^(send|отправить)$/i }).last();
-  if (await sendButton.count()) await sendButton.click({ timeout: 10_000 });
-  else await page.keyboard.press('Enter');
-  await confirmInstagramSend(page, textbox);
-}
-
-async function hasMessageButton(page) {
-  return await messageButtonLocator(page).count() > 0;
-}
-
-function messageButtonLocator(page) {
-  return page.getByRole('button', { name: MESSAGE_BUTTON_PATTERN }).first();
-}
-
-async function waitForMessageTextbox(page) {
-  const textbox = page.getByRole('textbox').last();
-  await textbox.waitFor({ state: 'visible', timeout: 30_000 })
-    .catch(() => {
-      throw new ExecutorJobError('message_box_missing', 'Поле ввода сообщения недоступно');
-    });
-  return textbox;
-}
-
-async function confirmInstagramSend(page, textbox) {
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (await isComposerCleared(textbox)) return;
-    await page.waitForTimeout(500);
-  }
-  throw new ExecutorJobError('send_confirmation_missing', 'Instagram не подтвердил отправку сообщения');
-}
-
-async function isComposerCleared(textbox) {
-  const text = await textbox.innerText({ timeout: 1000 }).catch(() => '');
-  const value = await textbox.inputValue({ timeout: 1000 }).catch(() => '');
-  return !normalizeMessageText(text || value);
-}
-
-export function normalizeMessageText(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
 function extractMessageText(response) {
@@ -294,8 +257,11 @@ async function sleepInterruptibly(milliseconds, control) {
   }
 }
 
-async function postJson(url, payload, timeoutMs = N8N_TIMEOUT_MS) {
+async function postJson(url, payload, timeoutMs = N8N_TIMEOUT_MS, control = {}) {
+  assertNotStopped(control);
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  control.abortController?.signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
@@ -309,10 +275,12 @@ async function postJson(url, payload, timeoutMs = N8N_TIMEOUT_MS) {
     if (!response.ok) throw new Error(body.error || body.message || `webhook вернул HTTP ${response.status}`);
     return body;
   } catch (error) {
-    if (error.name === 'AbortError') throw new ExecutorJobError('n8n_timeout', 'webhook не ответил за 3 минуты');
+    if (control.stop) throw new ExecutorJobError('stopped', 'Исполнитель остановлен', 'system');
+    if (error.name === 'AbortError') throw new ExecutorJobError('n8n_timeout', 'webhook не ответил за 3 минуты', 'lead');
     throw error;
   } finally {
     clearTimeout(timer);
+    control.abortController?.signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -343,18 +311,6 @@ function timeToMinutes(value) {
   return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
 }
 
-function classifyError(error) {
-  const message = String(error?.message || error || '');
-  if (/log in|войти/i.test(message)) return 'login_required';
-  if (/3 минуты|timeout|abort/i.test(message)) return 'n8n_timeout';
-  if (/кнопка сообщения|message/i.test(message)) return 'no_message_button';
-  if (/недоступ/i.test(message)) return 'profile_unavailable';
-  return 'browser_error';
-}
-
-class ExecutorJobError extends Error {
-  constructor(reason, message) {
-    super(message);
-    this.reason = reason;
-  }
+function normalizeUsername(value) {
+  return String(value || '').replace(/^@/, '').trim();
 }

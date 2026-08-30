@@ -56,11 +56,28 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
 pub fn stop(runtime: &BackendRuntime) {
     if let Ok(mut guard) = runtime.0.lock() {
         if let Some(child) = guard.as_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_child(child);
         }
         *guard = None;
     }
+}
+
+fn terminate_child(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(child.id().to_string())
+            .status();
+        for _ in 0..50 {
+            if child.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn backend_is_ready() -> bool {

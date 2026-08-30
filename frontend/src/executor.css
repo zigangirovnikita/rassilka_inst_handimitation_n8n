@@ -199,6 +199,11 @@ button:disabled {
   color: #9f2c1d;
 }
 
+.status-pill.uncertain {
+  background: #fff7df;
+  color: #7a5a00;
+}
+
 .status-pill.completed {
   background: #e6f5ed;
   color: #1f7a55;

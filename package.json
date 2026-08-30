@@ -9,6 +9,7 @@
     "dev:frontend": "vite --host 127.0.0.1",
     "build": "vite build",
     "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.js",
     "prepare:desktop": "node scripts/prepare-desktop-runtime.mjs",
     "build:mac": "tauri build --target aarch64-apple-darwin --bundles app"
   },

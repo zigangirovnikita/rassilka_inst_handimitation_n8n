@@ -22,6 +22,7 @@ export function initDatabase(filePath) {
     CREATE TABLE IF NOT EXISTS app_identity (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       workspace_id TEXT NOT NULL UNIQUE,
+      api_token TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -33,8 +34,26 @@ export function initDatabase(filePath) {
       created_at TEXT NOT NULL
     );
   `);
+  migrateDatabase(db);
   ensureAppIdentity(db);
   ensureN8nExecutorTables(db);
+  cleanupOldRuntimeRows(db);
   return db;
 }
 
+function migrateDatabase(db) {
+  addColumnIfMissing(db, 'app_identity', 'api_token', 'TEXT');
+}
+
+function addColumnIfMissing(db, table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some(row => row.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+function cleanupOldRuntimeRows(db) {
+  const eventsToKeep = db.prepare('SELECT id FROM event_logs ORDER BY id DESC LIMIT 500').all().map(row => row.id);
+  if (eventsToKeep.length) {
+    const placeholders = eventsToKeep.map(() => '?').join(',');
+    db.prepare(`DELETE FROM event_logs WHERE id NOT IN (${placeholders})`).run(...eventsToKeep);
+  }
+}

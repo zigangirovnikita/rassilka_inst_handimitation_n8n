@@ -23,7 +23,7 @@ Do not copy, edit, or import the older `rassilka` product app into this reposito
 ## Development
 
 - Local frontend: `http://127.0.0.1:5173`
-- Local backend: `http://127.0.0.1:8731`
+- Local backend: `http://127.0.0.1:8732`
 - Main development command: `pnpm dev`
 - Checks: `pnpm check`, `pnpm build`, `cargo check` from `src-tauri`
 - Desktop runtime: `pnpm prepare:desktop`
@@ -43,8 +43,11 @@ Do not copy, edit, or import the older `rassilka` product app into this reposito
 - Login Chrome must not refresh while the user is typing credentials. During login, open Instagram once and poll detection without repeated navigation.
 - Do not persist an account draft until Instagram username is detected.
 - Deleting an account must delete the account row, executor settings, jobs, events, and local Chrome profile directory.
+- Delete must wait for the worker to stop before removing the Chrome profile directory.
 - `job_id` comes from n8n and must be unique per profile task. The app uses it to avoid duplicate sending.
+- Do not trust `target_url` from n8n for navigation. Validate `target_username` and build `https://www.instagram.com/{username}/` locally.
 - A successful Instagram send must be marked `sent` locally before reporting status back to n8n. If the final report to n8n times out, keep local status as sent and log a warning.
+- If a job reaches `sending` and then the app crashes/errors before confirmation, mark/recover it as `uncertain` and do not resend it automatically.
 - If n8n returns `no_task`, `completed`, `done`, or `all_done`, disable the executor and show `Рассылка завершена`.
 - Every n8n request has a 3 minute timeout. A timed-out task must not block the next scheduled run forever.
 - Recognize Instagram message buttons in English and Russian, including `Message`, `Send message`, `Сообщение`, `Отправить сообщение`, and `Написать`.

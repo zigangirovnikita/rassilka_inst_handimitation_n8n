@@ -15,6 +15,7 @@ import {
 import {
   createAccount,
   deleteAccount,
+  getPreflight,
   listProfiles,
   reconnectAccount,
   saveExecutorSettings,
@@ -28,7 +29,8 @@ const STATUS_LABELS = {
   waiting: 'Ждет',
   running: 'Работает',
   paused: 'Пауза',
-  completed: 'Рассылка завершена'
+  completed: 'Рассылка завершена',
+  uncertain: 'Требует проверки'
 };
 
 function App() {
@@ -36,6 +38,7 @@ function App() {
   const [openIds, setOpenIds] = useState(new Set());
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [preflight, setPreflight] = useState(null);
 
   async function refresh(silent = false) {
     try {
@@ -52,6 +55,7 @@ function App() {
 
   useEffect(() => {
     refresh();
+    getPreflight().then(setPreflight).catch(err => setError(err.message || String(err)));
     const timer = setInterval(() => refresh(true), 3000);
     return () => clearInterval(timer);
   }, []);
@@ -91,7 +95,7 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <h1>Instagram Agent</h1>
+          <h1>Instagram Agent n8n</h1>
           <p>Локальный исполнитель рассылок через n8n</p>
         </div>
         <button className="primary-btn" onClick={addProfile} disabled={Boolean(busy)}>
@@ -101,6 +105,7 @@ function App() {
       </header>
 
       {error ? <div className="notice error">{error}</div> : null}
+      {preflight && !preflight.chrome?.ok ? <div className="notice error">{preflight.chrome.message}</div> : null}
 
       <section className="profile-list">
         {!profiles.length ? (

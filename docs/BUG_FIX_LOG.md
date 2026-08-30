@@ -37,10 +37,10 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Area: frontend/development
 - Symptoms: Local smoke tests could accidentally point the new frontend at another backend already running on `127.0.0.1:8731`.
 - Root cause: The frontend API URL was hardcoded.
-- Fix: Added `VITE_API_URL` override while keeping `http://127.0.0.1:8731` as the production default.
+- Fix: Added `VITE_API_URL` override; the standalone production default is now `http://127.0.0.1:8732`.
 - Files changed: `frontend/src/api.js`, `README.md`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm build`, UI smoke test against a temporary backend port.
-- Do not regress: Keep the installed app default on `8731`, but allow local tests to point at an isolated backend.
+- Do not regress: Keep the installed app default on `8732`, but allow local tests to point at an isolated backend.
 
 ## 2026-08-29 - Distinct Mac App Name
 
@@ -61,3 +61,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `backend/server.js`, `frontend/src/api.js`, `src-tauri/src/backend_runtime.rs`, `README.md`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm build`, `cargo check`, Tauri build, DMG verification.
 - Do not regress: Do not move the standalone n8n executor back to `8731`; that port belongs to the older app.
+
+## 2026-08-30 - Safety Audit Fixes
+
+- Area: backend/frontend/automation/storage/tauri/tests/docs
+- Symptoms: External audit found real risks: exposed local API, stop/delete races, duplicate sends after crash, reconnecting the wrong Instagram account, trusting `target_url`, treating bad leads as system failures, weak restriction/send detection, stale `AGENTS.md`, and no focused contract tests.
+- Root cause: The first standalone release optimized for a small manual test and kept too much trust in local calls and n8n payloads.
+- Fix: Added local API token and origin checks, including Tauri origins, hid executor secrets from profile listing, added Chrome preflight, made stop abort current n8n waits and check before Send, made delete wait for worker shutdown, blocked reconnect to a different username, ignored n8n `target_url`, added `sending/uncertain`, deduped recent recipients, split lead/account/system failures, added Instagram restriction checks, improved send confirmation, changed Tauri shutdown to SIGTERM first, corrected `AGENTS.md` port, split oversized worker modules, and added focused tests.
+- Files changed: `backend/apiSecurity.js`, `backend/server.js`, `backend/storage.js`, `backend/identity.js`, `backend/n8nExecutorStore.js`, `automation/instagramWorker.js`, `automation/n8nExecutorWorker.js`, `frontend/src/api.js`, `frontend/src/main.jsx`, `src-tauri/src/backend_runtime.rs`, `tests/executor-contract.test.js`, `AGENTS.md`, `README.md`, `docs/BUG_FIX_LOG.md`.
+- Verification: `pnpm check`, `pnpm test`, `pnpm build`, `cargo check`, Tauri release build, DMG verification, installed app health/API check.
+- Do not regress: Keep local API protected, never expose profile `secret`, never send after stop, never delete an active profile directory, never navigate to untrusted `target_url`, and never auto-resend `sending/uncertain` jobs.

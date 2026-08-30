@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getAppIdentity } from './identity.js';
-import { logEvent, nowIso } from './events.js';
+import { nowIso } from './events.js';
 import { listAccounts } from './profileStore.js';
 import { stringValue } from './valueUtils.js';
 
@@ -51,12 +51,14 @@ export function ensureN8nExecutorTables(db) {
       target_url TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL,
       error TEXT,
+      completed_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       sent_at TEXT,
       UNIQUE(instagram_profile_id, job_id)
     );
   `);
+  addColumnIfMissing(db, 'n8n_executor_jobs', 'completed_at', 'TEXT');
 }
 
 export function ensureExecutorProfile(db, instagramProfileId) {
@@ -72,7 +74,7 @@ export function ensureExecutorProfile(db, instagramProfileId) {
 export function listExecutorProfiles(db) {
   return listAccounts(db).map(account => ({
     ...account,
-    executor: ensureExecutorProfile(db, account.instagramProfileId),
+    executor: publicExecutorProfile(ensureExecutorProfile(db, account.instagramProfileId)),
     events: listExecutorEvents(db, account.instagramProfileId)
   }));
 }
@@ -176,8 +178,8 @@ export function upsertExecutorJob(db, instagramProfileId, task, status = 'runnin
   const jobId = stringValue(task.job_id ?? task.jobId);
   if (!jobId) throw new Error('n8n не вернул job_id');
   const username = normalizeUsername(task.target_username ?? task.username ?? task.instagram_username);
-  const targetUrl = stringValue(task.target_url ?? task.profile_url ?? task.profileUrl) || (username ? `https://www.instagram.com/${username}/` : '');
-  if (!username && !targetUrl) throw new Error('n8n не вернул получателя');
+  if (!username) throw new Error('n8n не вернул корректный username получателя');
+  const targetUrl = `https://www.instagram.com/${username}/`;
   const now = nowIso();
   db.prepare(`
     INSERT INTO n8n_executor_jobs
@@ -191,8 +193,20 @@ export function upsertExecutorJob(db, instagramProfileId, task, status = 'runnin
 }
 
 export function getExecutorJob(db, instagramProfileId, jobId) {
-  return db.prepare('SELECT status, sent_at AS sentAt FROM n8n_executor_jobs WHERE instagram_profile_id = ? AND job_id = ?')
+  return db.prepare('SELECT status, sent_at AS sentAt, target_username AS targetUsername FROM n8n_executor_jobs WHERE instagram_profile_id = ? AND job_id = ?')
     .get(instagramProfileId, jobId);
+}
+
+export function getRecentRecipientJob(db, instagramProfileId, username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+  return db.prepare(`
+    SELECT job_id AS jobId, status, sent_at AS sentAt, completed_at AS completedAt
+    FROM n8n_executor_jobs
+    WHERE instagram_profile_id = ? AND target_username = ?
+      AND status IN ('sent', 'sending', 'uncertain')
+    ORDER BY id DESC LIMIT 1
+  `).get(instagramProfileId, normalized);
 }
 
 export function finishExecutorJob(db, instagramProfileId, jobId, status, error = '') {
@@ -200,9 +214,10 @@ export function finishExecutorJob(db, instagramProfileId, jobId, status, error =
   db.prepare(`
     UPDATE n8n_executor_jobs
     SET status = ?, error = ?, sent_at = CASE WHEN ? = 'sent' THEN ? ELSE sent_at END,
+      completed_at = CASE WHEN ? IN ('sent', 'failed', 'uncertain') THEN ? ELSE completed_at END,
       updated_at = ?
     WHERE instagram_profile_id = ? AND job_id = ?
-  `).run(status, error || null, status, now, now, instagramProfileId, jobId);
+  `).run(status, error || null, status, now, status, now, now, instagramProfileId, jobId);
 }
 
 export function countSentToday(db, instagramProfileId) {
@@ -212,6 +227,21 @@ export function countSentToday(db, instagramProfileId) {
     WHERE instagram_profile_id = ? AND status = 'sent' AND sent_at IS NOT NULL
   `).all(instagramProfileId)
     .filter(row => row.sentAt ? moscowDateKey(new Date(row.sentAt)) === today : false).length;
+}
+
+export function hasAccount(db, instagramProfileId) {
+  return Boolean(db.prepare('SELECT 1 FROM accounts WHERE instagram_profile_id = ?').get(instagramProfileId));
+}
+
+export function publicExecutorProfile(executor) {
+  if (!executor) return executor;
+  const { secret, ...publicProfile } = executor;
+  return publicProfile;
+}
+
+function addColumnIfMissing(db, table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some(row => row.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 export function buildExecutorPayload(db, instagramProfileId, event, extra = {}) {

@@ -1,8 +1,12 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 
 let loginContext = null;
+const MAC_CHROME_PATHS = [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  `${process.env.HOME || ''}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+];
 
 export async function openChromeContext(appRoot, savedProfileDir = '', options = {}) {
   const dir = savedProfileDir || join(appRoot, 'profiles', 'igp_default');
@@ -13,6 +17,29 @@ export async function openChromeContext(appRoot, savedProfileDir = '', options =
     chromiumSandbox: true,
     viewport: { width: 1280, height: 860 }
   });
+}
+
+export async function checkChromeAvailable() {
+  try {
+    const executable = chromium.executablePath('chrome');
+    if (executable && existsSync(executable)) return { ok: true, executable };
+  } catch {
+    // Fall through to user-facing message below.
+  }
+  const macPath = MAC_CHROME_PATHS.find(path => path && existsSync(path));
+  if (macPath) return { ok: true, executable: macPath };
+  let browser = null;
+  try {
+    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    return { ok: true, executable: 'chrome' };
+  } catch {
+    return {
+      ok: false,
+      message: 'Google Chrome не найден. Установите Google Chrome и перезапустите приложение.'
+    };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
 }
 
 export async function openInstagramLogin(appRoot, savedProfileDir = '') {

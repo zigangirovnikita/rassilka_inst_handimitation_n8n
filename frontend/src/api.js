@@ -1,10 +1,22 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8732';
+let apiToken = import.meta.env.VITE_API_TOKEN || '';
+
+async function ensureSession() {
+  if (apiToken) return apiToken;
+  const response = await fetch(`${API_URL}/api/session`);
+  const body = await response.json();
+  apiToken = body.token || '';
+  if (!apiToken) throw new Error('Локальная авторизация не получена');
+  return apiToken;
+}
 
 async function request(path, options = {}) {
+  const token = await ensureSession();
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      'X-Instagram-Agent-Token': token,
       ...(options.headers || {})
     }
   });
@@ -16,6 +28,10 @@ async function request(path, options = {}) {
 
 export function listProfiles() {
   return request('/n8n-executor/profiles');
+}
+
+export function getPreflight() {
+  return request('/preflight');
 }
 
 export function saveExecutorSettings(instagramProfileId, settings) {
