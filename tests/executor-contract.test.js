@@ -29,6 +29,7 @@ test('recognizes expected Instagram message button labels', () => {
 
 test('allows local Tauri origins and rejects regular websites', () => {
   assert.equal(isAllowedOrigin('tauri.localhost'), true);
+  assert.equal(isAllowedOrigin('tauri://localhost'), true);
   assert.equal(isAllowedOrigin('tauri://tauri.localhost'), true);
   assert.equal(isAllowedOrigin('http://tauri.localhost'), true);
   assert.equal(isAllowedOrigin('https://example.com'), false);

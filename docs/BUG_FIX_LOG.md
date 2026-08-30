@@ -71,3 +71,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `backend/apiSecurity.js`, `backend/server.js`, `backend/storage.js`, `backend/identity.js`, `backend/n8nExecutorStore.js`, `backend/profileStore.js`, `automation/instagramWorker.js`, `automation/n8nExecutorWorker.js`, `frontend/src/api.js`, `frontend/src/main.jsx`, `src-tauri/src/lib.rs`, `src-tauri/src/backend_runtime.rs`, `tests/executor-contract.test.js`, `AGENTS.md`, `README.md`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm test`, `pnpm build`, `cargo check`, Tauri release build, DMG verification, installed app health/API check.
 - Do not regress: Keep local API protected, never expose profile `secret`, never send after stop, never delete an active profile directory, never save one detected Instagram username as two local profiles, never navigate to untrusted `target_url`, and never auto-resend `sending/uncertain` jobs.
+
+## 2026-08-30 - Tauri WebView API Load Failed
+
+- Area: backend/security/desktop
+- Symptoms: The installed macOS app showed `Load failed`, and `Добавить профиль` did not open the Instagram login flow.
+- Root cause: The local API origin whitelist covered dev origins and `tauri://tauri.localhost`, but the production Tauri WebView can call the backend from `tauri://localhost`. The strengthened CORS/API protection rejected that origin before the frontend could obtain its local API token.
+- Fix: Allowed both `tauri://localhost` and `tauri://tauri.localhost`, kept regular websites rejected, and added the private-network CORS header for local desktop requests.
+- Files changed: `backend/apiSecurity.js`, `tests/executor-contract.test.js`, `docs/BUG_FIX_LOG.md`.
+- Verification: `pnpm check`, `pnpm test`, `pnpm build`, installed app API checks for `tauri://localhost`, `tauri://tauri.localhost`, and `http://tauri.localhost`.
+- Do not regress: Tauri production origins must be tested in addition to Node-based localhost smoke tests.

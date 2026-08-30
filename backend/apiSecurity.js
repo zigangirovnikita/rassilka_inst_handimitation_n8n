@@ -14,7 +14,8 @@ export function corsHeaders(request) {
     ...(allowedOrigin ? { 'Access-Control-Allow-Origin': allowedOrigin } : {}),
     'Vary': 'Origin',
     'Access-Control-Allow-Headers': 'Content-Type, X-Instagram-Agent-Token',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Private-Network': 'true'
   };
 }
 
@@ -23,7 +24,7 @@ export function isAllowedOrigin(origin) {
   if (origin === 'null') return true;
   if (origin === 'tauri.localhost') return true;
   if (DEV_ORIGINS.has(origin)) return true;
-  return /^(https?|tauri):\/\/tauri\.localhost(?::\d+)?$/i.test(origin);
+  return /^(https?|tauri):\/\/(tauri\.localhost|localhost)(?::\d+)?$/i.test(origin);
 }
 
 export function assertAllowedOrigin(request) {
