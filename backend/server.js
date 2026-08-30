@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkChromeAvailable, openInstagramLogin, detectInstagramAccount } from '../automation/instagramWorker.js';
 import { runN8nExecutor } from '../automation/n8nExecutorWorker.js';
@@ -14,7 +15,7 @@ import {
   setExecutorEnabled,
   setExecutorRuntimeState
 } from './n8nExecutorStore.js';
-import { buildLocalAccountDraft, deleteLocalAccount, getAccount, upsertAccount } from './profileStore.js';
+import { buildLocalAccountDraft, deleteLocalAccount, findAccountByUsername, getAccount, upsertAccount } from './profileStore.js';
 import { initDatabase } from './storage.js';
 
 const PORT = Number(process.env.PORT || 8732);
@@ -112,6 +113,12 @@ async function route(request, response) {
     if (!chrome.ok) return send(request, response, 400, { error: chrome.message });
     const account = buildLocalAccountDraft(db, appRoot);
     const connected = await openInstagramLogin(appRoot, account.profileDir);
+    try {
+      assertUsernameNotUsedByAnotherProfile(db, connected.username, account.instagramProfileId);
+    } catch (error) {
+      rmSync(account.profileDir, { recursive: true, force: true });
+      throw error;
+    }
     const savedAccount = upsertAccount(db, {
       ...account,
       username: connected.username || account.username,
@@ -135,6 +142,7 @@ async function route(request, response) {
     if (previousUsername && nextUsername && previousUsername !== nextUsername) {
       throw new Error(`В этом профиле был @${previousUsername}, а сейчас открыт @${nextUsername}. Создайте новый профиль для другого аккаунта.`);
     }
+    assertUsernameNotUsedByAnotherProfile(db, connected.username, instagramProfileId);
     const account = upsertAccount(db, { ...existing, username: connected.username || existing.username, connected: true });
     logEvent(db, account.instagramProfileId, 'success', `Профиль @${account.username} переподключен`);
     return send(request, response, 200, {
@@ -224,6 +232,13 @@ function stopControl(control) {
 
 function normalizeUsername(value) {
   return String(value || '').replace(/^@/, '').trim().toLowerCase();
+}
+
+function assertUsernameNotUsedByAnotherProfile(db, username, instagramProfileId) {
+  const existing = findAccountByUsername(db, username);
+  if (existing && existing.instagramProfileId !== instagramProfileId) {
+    throw new Error(`Instagram аккаунт @${existing.username} уже добавлен в приложение. Удалите старый профиль или используйте его.`);
+  }
 }
 
 async function shutdown() {

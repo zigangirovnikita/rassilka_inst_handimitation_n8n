@@ -24,6 +24,18 @@ export function getAccount(db, instagramProfileId) {
   return account ? { ...account, connected: Boolean(account.connected) } : null;
 }
 
+export function findAccountByUsername(db, username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+  const account = db.prepare(`
+    SELECT instagram_profile_id AS instagramProfileId, username, profile_dir AS profileDir, connected
+    FROM accounts
+    WHERE lower(replace(username, '@', '')) = ?
+    LIMIT 1
+  `).get(normalized);
+  return account ? { ...account, connected: Boolean(account.connected) } : null;
+}
+
 export function buildLocalAccountDraft(db, appRoot) {
   const instagramProfileId = makeInstagramProfileId(`local:${Date.now()}:${Math.random()}`);
   return {
@@ -64,4 +76,8 @@ export function deleteLocalAccount(db, instagramProfileId) {
   }
   rmSync(account.profileDir, { recursive: true, force: true });
   return account;
+}
+
+function normalizeUsername(value) {
+  return String(value || '').replace(/^@/, '').trim().toLowerCase();
 }

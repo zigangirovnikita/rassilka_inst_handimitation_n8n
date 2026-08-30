@@ -5,7 +5,7 @@ import test from 'node:test';
 import { classifyNextTaskResponse } from '../automation/n8nExecutorResponse.js';
 import { isMessageButtonLabel } from '../automation/n8nExecutorWorker.js';
 import { initDatabase } from '../backend/storage.js';
-import { upsertAccount } from '../backend/profileStore.js';
+import { findAccountByUsername, upsertAccount } from '../backend/profileStore.js';
 import { isAllowedOrigin } from '../backend/apiSecurity.js';
 import {
   ensureExecutorProfile,
@@ -47,6 +47,22 @@ test('does not expose executor secret in profile list', () => {
     const [profile] = listExecutorProfiles(db);
     assert.equal(profile.executor.secret, undefined);
     assert.equal(Boolean(profile.executor.webhookUrl), false);
+  } finally {
+    cleanup();
+  }
+});
+
+test('finds existing Instagram account by normalized username', () => {
+  const { db, cleanup } = makeDb();
+  try {
+    upsertAccount(db, {
+      instagramProfileId: 'igp_test_duplicate',
+      username: 'Sender.Account',
+      profileDir: '/tmp/igp_test_duplicate',
+      connected: true
+    });
+    const existing = findAccountByUsername(db, '@sender.account');
+    assert.equal(existing.instagramProfileId, 'igp_test_duplicate');
   } finally {
     cleanup();
   }
