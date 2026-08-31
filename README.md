@@ -24,10 +24,11 @@
 ## Установка на Windows
 
 1. Установите Google Chrome.
-2. Скачайте Windows x64 installer `.exe` из GitHub Releases.
-3. Запустите installer и откройте `Instagram Agent n8n`.
-4. Нажмите `Добавить профиль`, войдите в Instagram в открывшемся Chrome и дождитесь, пока приложение определит username.
-5. Вставьте webhook n8n, задайте лимиты и нажмите `Включить рассылку`.
+2. Скачайте Windows x64 installer `.exe` из последнего GitHub Release. Для WebView2-исправления нужен файл `Instagram.Agent.n8n_0.2.1_x64-setup.exe` или новее.
+3. Запустите installer. Если Windows покажет установку Microsoft Edge WebView2 Runtime, разрешите ее и дождитесь завершения.
+4. Откройте `Instagram Agent n8n`.
+5. Нажмите `Добавить профиль`, войдите в Instagram в открывшемся Chrome и дождитесь, пока приложение определит username.
+6. Вставьте webhook n8n, задайте лимиты и нажмите `Включить рассылку`.
 
 ## Контракт webhook n8n
 
