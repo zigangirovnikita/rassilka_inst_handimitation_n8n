@@ -1,6 +1,10 @@
 name: Windows Release
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/release-v0.2.2
   workflow_dispatch:
     inputs:
       release_tag:
@@ -61,7 +65,7 @@ jobs:
       - name: Attach installer to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag }}
+          tag_name: ${{ inputs.release_tag || 'v0.2.2' }}
           files: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           fail_on_unmatched_files: true
