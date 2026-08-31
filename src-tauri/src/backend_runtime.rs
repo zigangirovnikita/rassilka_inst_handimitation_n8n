@@ -36,7 +36,15 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
     let app_root = app.path().app_data_dir().map_err(|error| error.to_string())?;
     let runtime_dir = resource_dir.join("runtime");
     let node_path = node_executable(&runtime_dir);
-    let server_path = runtime_dir.join("backend").join("server.js");
+    let backend_dir = runtime_dir.join("backend");
+    let server_path = backend_dir.join("server.js");
+
+    if !node_path.is_file() {
+        return Err(format!("Bundled Node.js не найден: {}", node_path.display()));
+    }
+    if !server_path.is_file() {
+        return Err(format!("Backend entrypoint не найден: {}", server_path.display()));
+    }
 
     fs::create_dir_all(app_root.join("logs")).map_err(|error| error.to_string())?;
     let log = OpenOptions::new()
@@ -46,12 +54,8 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
         .map_err(|error| error.to_string())?;
     let error_log = log.try_clone().map_err(|error| error.to_string())?;
 
-    let mut command = Command::new(node_path);
+    let mut command = backend_command(&node_path, &backend_dir, &app_root);
     command
-        .arg(server_path)
-        .current_dir(&app_root)
-        .env("RASSILKA_APP_ROOT", &app_root)
-        .env("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(error_log));
 
@@ -73,6 +77,23 @@ pub fn start(app: &AppHandle) -> Result<Option<Child>, String> {
     }
     let _ = child.kill();
     Err("Локальный backend не запустился за 8 секунд".to_string())
+}
+
+fn backend_command(
+    node_path: &std::path::Path,
+    backend_dir: &std::path::Path,
+    app_root: &std::path::Path,
+) -> Command {
+    let mut command = Command::new(node_path);
+    // Keep the Node entrypoint free of an absolute Windows path. The installed
+    // resource directory contains spaces, and passing that path through the
+    // packaged process boundary caused Node to receive only `C:` as argv[1].
+    command
+        .arg("server.js")
+        .current_dir(backend_dir)
+        .env("RASSILKA_APP_ROOT", app_root)
+        .env("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1");
+    command
 }
 
 fn node_executable(runtime_dir: &std::path::Path) -> std::path::PathBuf {
@@ -129,4 +150,30 @@ fn backend_is_ready() -> bool {
     let mut body = String::new();
     stream.read_to_string(&mut body).is_ok() && body.contains("instagram-agent-backend")
 }
-\n#[cfg(test)]\nmod tests {\n    use super::backend_command;\n    use std::ffi::OsStr;\n    use std::path::Path;\n\n    #[test]\n    fn backend_command_uses_relative_entrypoint_for_paths_with_spaces() {\n        let node_path = Path::new(r"C:\\Users\\Test User\\Instagram Agent n8n\\runtime\\node.exe");\n        let backend_dir = Path::new(r"C:\\Users\\Test User\\Instagram Agent n8n\\runtime\\backend");\n        let app_root = Path::new(r"C:\\Users\\Test User\\AppData\\Roaming\\ru.local.instagram-agent-n8n");\n\n        let command = backend_command(node_path, backend_dir, app_root);\n        let args: Vec<_> = command.get_args().collect();\n\n        assert_eq!(args, [OsStr::new("server.js")]);\n        assert_eq!(command.get_current_dir(), Some(backend_dir));\n        assert_eq!(\n            command\n                .get_envs()\n                .find(|(key, _)| *key == OsStr::new("RASSILKA_APP_ROOT"))\n                .and_then(|(_, value)| value),\n            Some(app_root.as_os_str())\n        );\n    }\n}\n
+
+#[cfg(test)]
+mod tests {
+    use super::backend_command;
+    use std::ffi::OsStr;
+    use std::path::Path;
+
+    #[test]
+    fn backend_command_uses_relative_entrypoint_for_paths_with_spaces() {
+        let node_path = Path::new(r"C:\Users\Test User\Instagram Agent n8n\runtime\node.exe");
+        let backend_dir = Path::new(r"C:\Users\Test User\Instagram Agent n8n\runtime\backend");
+        let app_root = Path::new(r"C:\Users\Test User\AppData\Roaming\ru.local.instagram-agent-n8n");
+
+        let command = backend_command(node_path, backend_dir, app_root);
+        let args: Vec<_> = command.get_args().collect();
+
+        assert_eq!(args, [OsStr::new("server.js")]);
+        assert_eq!(command.get_current_dir(), Some(backend_dir));
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(key, _)| *key == OsStr::new("RASSILKA_APP_ROOT"))
+                .and_then(|(_, value)| value),
+            Some(app_root.as_os_str())
+        );
+    }
+}
