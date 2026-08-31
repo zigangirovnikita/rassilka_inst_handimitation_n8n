@@ -101,3 +101,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `src-tauri/tauri.conf.json`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm test`, `pnpm build`, GitHub Actions Windows installer build.
 - Do not regress: Keep Windows installer autonomous even if it makes the `.exe` much larger; do not switch back to `downloadBootstrapper` without a deliberate release decision.
+
+## 2026-08-31 - Distinct Windows WebView2 Release
+
+- Area: desktop/packaging/windows
+- Symptoms: A Windows 10 user still saw the missing WebView2 Runtime error after installing the `0.2.0` release, even though the rebuilt asset had WebView2 embedded.
+- Root cause: The corrected installer reused the same version and filename as the previous Windows asset, so the user could easily install a cached or previously downloaded installer. Silent WebView2 installation also made runtime-install failures invisible.
+- Fix: Bumped the app to `0.2.1`, changed the Windows workflow default release tag to `v0.2.1`, and set `webviewInstallMode.silent` to `false` so Windows can show the embedded WebView2 installer/UAC flow when needed.
+- Files changed: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `scripts/package-mac-dmg.mjs`, `.github/workflows/windows-release.yml`, `docs/BUG_FIX_LOG.md`.
+- Verification: `pnpm check`, `pnpm test`, `pnpm build`, `cargo check`, GitHub Actions Windows installer build.
+- Do not regress: Do not reuse a Windows installer filename when debugging installer prerequisites; new prerequisite fixes must ship under a new version/tag.
