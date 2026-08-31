@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub release tag to attach the installer to
         required: true
-        default: v0.2.1
+        default: v0.2.2
 
 permissions:
   contents: write
