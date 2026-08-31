@@ -52,7 +52,14 @@ jobs:
         run: pnpm build
 
       - name: Build Windows installer
-        run: pnpm run build:windows
+        shell: pwsh
+        run: |
+          pnpm run build:windows 2>&1 | Tee-Object windows-build.log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = (Get-Content windows-build.log -Tail 30) -join "%0A"
+            Write-Output "::error title=Windows installer build failed::$tail"
+            exit $LASTEXITCODE
+          }
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
