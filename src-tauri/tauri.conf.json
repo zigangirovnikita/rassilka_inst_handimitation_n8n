@@ -26,6 +26,11 @@
   "bundle": {
     "active": true,
     "targets": ["app", "nsis"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      }
+    },
     "resources": {
       "../desktop-runtime/": "runtime/"
     },

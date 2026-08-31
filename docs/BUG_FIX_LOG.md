@@ -91,3 +91,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `scripts/prepare-desktop-runtime.mjs`, `src-tauri/src/backend_runtime.rs`, `src-tauri/tauri.conf.json`, `automation/instagramWorker.js`, `.github/workflows/windows-release.yml`, `package.json`, `README.md`, `AGENTS.md`, `installers/README.md`, `docs/BUG_FIX_LOG.md`.
 - Verification: Local syntax/tests/build/Rust checks on macOS plus GitHub Actions Windows build for the actual installer.
 - Do not regress: Do not hardcode the desktop runtime to macOS-only `runtime/node`; Windows release artifacts must be built on Windows.
+
+## 2026-08-31 - Bundled Windows WebView2 Runtime
+
+- Area: desktop/packaging/windows
+- Symptoms: On a Windows machine without Microsoft Edge WebView2 Runtime, the installed app could start but fail before showing the UI.
+- Root cause: The NSIS bundle relied on Tauri's default `downloadBootstrapper` WebView2 install mode; that is too fragile for home-use distribution where the target machine may lack WebView2 or may not complete the bootstrapper download/install.
+- Fix: Explicitly set `bundle.windows.webviewInstallMode.type` to `offlineInstaller` so the Windows installer embeds the WebView2 installer and can install the UI runtime itself.
+- Files changed: `src-tauri/tauri.conf.json`, `docs/BUG_FIX_LOG.md`.
+- Verification: `pnpm check`, `pnpm test`, `pnpm build`, GitHub Actions Windows installer build.
+- Do not regress: Keep Windows installer autonomous even if it makes the `.exe` much larger; do not switch back to `downloadBootstrapper` without a deliberate release decision.
