@@ -111,3 +111,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `scripts/package-mac-dmg.mjs`, `.github/workflows/windows-release.yml`, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm test`, `pnpm build`, `cargo check`, GitHub Actions Windows installer build.
 - Do not regress: Do not reuse a Windows installer filename when debugging installer prerequisites; new prerequisite fixes must ship under a new version/tag.
+
+## 2026-08-31 - Windows Backend Path With Spaces
+
+- Area: desktop/packaging/windows
+- Symptoms: The installed Windows app flashed briefly and closed before showing the UI; `backend.log` reported `EISDIR: illegal operation on a directory, lstat 'C:'`.
+- Root cause: The packaged backend launcher passed the absolute `server.js` path through the Windows child-process boundary. In the installed path `Instagram Agent n8n`, Node received only `C:` as its entrypoint and exited during Tauri setup.
+- Fix: Launch Node with the relative `server.js` entrypoint from the packaged backend directory, validate the bundled Node and backend files before spawning, and add a regression test using Windows-style paths with spaces.
+- Files changed: `src-tauri/src/backend_runtime.rs`, version metadata, Windows release workflow, `docs/BUG_FIX_LOG.md`.
+- Verification: `pnpm check`, `pnpm test`, `pnpm build`, `cargo test`, `cargo check`, Windows NSIS build, clean install, backend health check, and visible-window launch check.
+- Do not regress: The Windows backend entrypoint must remain relative to its working directory; smoke-test installed paths containing spaces and non-ASCII usernames.
