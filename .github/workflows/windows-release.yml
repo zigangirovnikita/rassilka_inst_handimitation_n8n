@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - .github/release-v0.2.2
+      - .github/release-v0.2.3
   workflow_dispatch:
     inputs:
       release_tag:
         description: GitHub release tag to attach the installer to
         required: true
-        default: v0.2.2
+        default: v0.2.3
 
 permissions:
   contents: write
@@ -72,7 +72,7 @@ jobs:
       - name: Attach installer to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag || 'v0.2.2' }}
+          tag_name: ${{ inputs.release_tag || 'v0.2.3' }}
           files: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           fail_on_unmatched_files: true

@@ -1520,7 +1520,7 @@ dependencies = [
 
 [[package]]
 name = "instagram-agent-n8n"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "tauri",
  "tauri-build",

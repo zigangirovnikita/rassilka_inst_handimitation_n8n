@@ -121,3 +121,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `src-tauri/src/backend_runtime.rs`, version metadata, Windows release workflow, `docs/BUG_FIX_LOG.md`.
 - Verification: `pnpm check`, `pnpm test`, `pnpm build`, `cargo test`, `cargo check`, Windows NSIS build, clean install, backend health check, and visible-window launch check.
 - Do not regress: The Windows backend entrypoint must remain relative to its working directory; smoke-test installed paths containing spaces and non-ASCII usernames.
+
+## 2026-08-31 - Hidden Windows Release Console
+
+- Area: desktop/packaging/windows
+- Symptoms: Starting the installed app opened the expected interface plus a second empty console window.
+- Root cause: The Tauri executable did not declare the Windows GUI subsystem for release builds. The bundled Node backend was already started with `CREATE_NO_WINDOW` and was not the source of the extra window.
+- Fix: Declared the Windows GUI subsystem for non-debug builds and released the correction as `0.2.3`.
+- Files changed: `src-tauri/src/main.rs`, version metadata, Windows release workflow, `docs/BUG_FIX_LOG.md`.
+- Verification: Source checks, tests, frontend build, Rust tests/check, Windows NSIS build, clean install, backend health check, and visible-window launch check.
+- Do not regress: Windows release builds must open only the Tauri interface; debug builds may retain a console for diagnostics.

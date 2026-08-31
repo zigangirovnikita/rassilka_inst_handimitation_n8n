@@ -1,6 +1,6 @@
 [package]
 name = "instagram-agent-n8n"
-version = "0.2.2"
+version = "0.2.3"
 description = "Local Instagram n8n executor"
 authors = ["Nikita Zigangirov"]
 edition = "2021"
