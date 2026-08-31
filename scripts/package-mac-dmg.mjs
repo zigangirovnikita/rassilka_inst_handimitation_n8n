@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const appPath = join(root, 'src-tauri', 'target', 'aarch64-apple-darwin', 'release', 'bundle', 'macos', 'Instagram Agent n8n.app');
-const outputPath = join(root, 'installers', 'Instagram-Agent-n8n-0.2.1-aarch64.dmg');
+const outputPath = join(root, 'installers', 'Instagram-Agent-n8n-0.2.2-aarch64.dmg');
 const staging = mkdtempSync(join(root, 'installers', 'dmg-'));
 
 try {
