@@ -3,6 +3,13 @@ export const LEAD_FAILURE_REASONS = new Set([
   'profile_unavailable',
   'message_text_empty',
   'send_confirmation_missing',
+  'publication_missing',
+  'post_unavailable',
+  'comments_disabled',
+  'comment_box_missing',
+  'comment_submit_missing',
+  'comment_text_empty',
+  'comment_confirmation_missing',
   'n8n_timeout'
 ]);
 

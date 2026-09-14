@@ -15,9 +15,11 @@ const DEFAULT_SETTINGS = {
   scheduleEnd: '22:00',
   status: 'idle',
   step: 'Ожидает запуска',
+  phase: 'messages',
   nextRunAt: null,
   currentJobId: null,
   sentToday: 0,
+  commentsSentToday: 0,
   consecutiveErrors: 0,
   lastError: ''
 };
@@ -36,6 +38,7 @@ export function ensureN8nExecutorTables(db) {
       schedule_end TEXT NOT NULL DEFAULT '22:00',
       status TEXT NOT NULL DEFAULT 'idle',
       step TEXT NOT NULL DEFAULT 'Ожидает запуска',
+      phase TEXT NOT NULL DEFAULT 'messages',
       next_run_at TEXT,
       current_job_id TEXT,
       consecutive_errors INTEGER NOT NULL DEFAULT 0,
@@ -57,8 +60,26 @@ export function ensureN8nExecutorTables(db) {
       sent_at TEXT,
       UNIQUE(instagram_profile_id, job_id)
     );
+
+    CREATE TABLE IF NOT EXISTS n8n_executor_comment_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      instagram_profile_id TEXT NOT NULL,
+      job_id TEXT NOT NULL,
+      target_username TEXT NOT NULL DEFAULT '',
+      target_url TEXT NOT NULL DEFAULT '',
+      comment_text TEXT NOT NULL DEFAULT '',
+      post_url TEXT,
+      status TEXT NOT NULL,
+      error TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      sent_at TEXT,
+      UNIQUE(instagram_profile_id, job_id)
+    );
   `);
   addColumnIfMissing(db, 'n8n_executor_jobs', 'completed_at', 'TEXT');
+  addColumnIfMissing(db, 'n8n_executor_settings', 'phase', "TEXT NOT NULL DEFAULT 'messages'");
 }
 
 export function ensureExecutorProfile(db, instagramProfileId) {
@@ -92,7 +113,7 @@ export function getExecutorProfile(db, instagramProfileId) {
     SELECT instagram_profile_id AS instagramProfileId, webhook_url AS webhookUrl, secret, enabled,
       daily_limit AS dailyLimit, min_interval_minutes AS minIntervalMinutes,
       max_interval_minutes AS maxIntervalMinutes, schedule_start AS scheduleStart,
-      schedule_end AS scheduleEnd, status, step, next_run_at AS nextRunAt,
+      schedule_end AS scheduleEnd, status, step, phase, next_run_at AS nextRunAt,
       current_job_id AS currentJobId, consecutive_errors AS consecutiveErrors,
       last_error AS lastError, updated_at AS updatedAt
     FROM n8n_executor_settings WHERE instagram_profile_id = ?
@@ -106,6 +127,7 @@ export function getExecutorProfile(db, instagramProfileId) {
     minIntervalMinutes: Number(row.minIntervalMinutes || DEFAULT_SETTINGS.minIntervalMinutes),
     maxIntervalMinutes: Number(row.maxIntervalMinutes || DEFAULT_SETTINGS.maxIntervalMinutes),
     sentToday: countSentToday(db, instagramProfileId),
+    commentsSentToday: countCommentsSentToday(db, instagramProfileId),
     consecutiveErrors: Number(row.consecutiveErrors || 0),
     lastError: row.lastError || ''
   };
@@ -142,11 +164,12 @@ export function setExecutorEnabled(db, instagramProfileId, enabled, step = '') {
   db.prepare(`
     UPDATE n8n_executor_settings
     SET enabled = ?, status = ?, step = ?, current_job_id = NULL,
+      phase = CASE WHEN ? = 1 AND phase = 'completed' THEN 'messages' ELSE phase END,
       next_run_at = CASE WHEN ? = 1 THEN COALESCE(next_run_at, ?) ELSE NULL END,
       updated_at = ?
     WHERE instagram_profile_id = ?
   `).run(enabled ? 1 : 0, enabled ? 'waiting' : 'idle',
-    step || (enabled ? 'Ждет следующего времени' : 'Остановлен'), enabled ? 1 : 0,
+    step || (enabled ? 'Ждет следующего времени' : 'Остановлен'), enabled ? 1 : 0, enabled ? 1 : 0,
     nowIso(), nowIso(), instagramProfileId);
   return getExecutorProfile(db, instagramProfileId);
 }
@@ -157,12 +180,13 @@ export function setExecutorRuntimeState(db, instagramProfileId, patch) {
   const has = key => Object.prototype.hasOwnProperty.call(patch, key);
   db.prepare(`
     UPDATE n8n_executor_settings
-    SET enabled = ?, status = ?, step = ?, next_run_at = ?, current_job_id = ?,
+    SET enabled = ?, status = ?, step = ?, phase = ?, next_run_at = ?, current_job_id = ?,
       consecutive_errors = ?, last_error = ?, updated_at = ?
     WHERE instagram_profile_id = ?
   `).run(has('enabled') ? (patch.enabled ? 1 : 0) : (current.enabled ? 1 : 0),
     has('status') ? patch.status : current.status,
     has('step') ? patch.step : current.step,
+    has('phase') ? patch.phase : current.phase,
     has('nextRunAt') ? patch.nextRunAt : current.nextRunAt,
     has('currentJobId') ? patch.currentJobId : current.currentJobId,
     has('consecutiveErrors') ? patch.consecutiveErrors : current.consecutiveErrors,
@@ -224,6 +248,57 @@ export function countSentToday(db, instagramProfileId) {
   const today = moscowDateKey(new Date());
   return db.prepare(`
     SELECT sent_at AS sentAt FROM n8n_executor_jobs
+    WHERE instagram_profile_id = ? AND status = 'sent' AND sent_at IS NOT NULL
+  `).all(instagramProfileId)
+    .filter(row => row.sentAt ? moscowDateKey(new Date(row.sentAt)) === today : false).length;
+}
+
+export function upsertCommentJob(db, instagramProfileId, task, status = 'running') {
+  const jobId = stringValue(task.job_id ?? task.jobId);
+  if (!jobId) throw new Error('n8n не вернул job_id комментария');
+  const username = normalizeUsername(task.target_username ?? task.username ?? task.instagram_username);
+  if (!username) throw new Error('n8n не вернул корректный username для комментария');
+  const commentText = stringValue(task.comment_text ?? task.commentText ?? task.message_text ?? task.messageText).trim();
+  if (!commentText) throw new Error('n8n не вернул текст комментария');
+  const targetUrl = `https://www.instagram.com/${username}/`;
+  const now = nowIso();
+  db.prepare(`
+    INSERT INTO n8n_executor_comment_jobs
+      (instagram_profile_id, job_id, target_username, target_url, comment_text, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(instagram_profile_id, job_id) DO UPDATE SET
+      target_username = excluded.target_username, target_url = excluded.target_url,
+      comment_text = excluded.comment_text, status = excluded.status, error = NULL,
+      updated_at = excluded.updated_at
+  `).run(instagramProfileId, jobId, username, targetUrl, commentText, status, now, now);
+  return { jobId, targetUsername: username, targetUrl, commentText };
+}
+
+export function getCommentJob(db, instagramProfileId, jobId) {
+  return db.prepare(`
+    SELECT status, sent_at AS sentAt, target_username AS targetUsername,
+      target_url AS targetUrl, comment_text AS commentText, post_url AS postUrl
+    FROM n8n_executor_comment_jobs
+    WHERE instagram_profile_id = ? AND job_id = ?
+  `).get(instagramProfileId, jobId);
+}
+
+export function finishCommentJob(db, instagramProfileId, jobId, status, error = '', postUrl = '') {
+  const now = nowIso();
+  db.prepare(`
+    UPDATE n8n_executor_comment_jobs
+    SET status = ?, error = ?, post_url = COALESCE(NULLIF(?, ''), post_url),
+      sent_at = CASE WHEN ? = 'sent' THEN ? ELSE sent_at END,
+      completed_at = CASE WHEN ? IN ('sent', 'failed', 'uncertain') THEN ? ELSE completed_at END,
+      updated_at = ?
+    WHERE instagram_profile_id = ? AND job_id = ?
+  `).run(status, error || null, postUrl || '', status, now, status, now, now, instagramProfileId, jobId);
+}
+
+export function countCommentsSentToday(db, instagramProfileId) {
+  const today = moscowDateKey(new Date());
+  return db.prepare(`
+    SELECT sent_at AS sentAt FROM n8n_executor_comment_jobs
     WHERE instagram_profile_id = ? AND status = 'sent' AND sent_at IS NOT NULL
   `).all(instagramProfileId)
     .filter(row => row.sentAt ? moscowDateKey(new Date(row.sentAt)) === today : false).length;

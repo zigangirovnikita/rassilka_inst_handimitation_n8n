@@ -1,5 +1,23 @@
 # Bug Fix Log
 
+## 2026-09-15 - Intermittent Direct composer false negative
+
+- Area: Instagram Direct automation
+- Symptom: A recipient profile exposed the `Отправить сообщение` button, but the executor intermittently reported `message_box_missing` while Instagram was replacing or asynchronously rendering the Direct composer.
+- Fix: The executor now polls every matching composer candidate for up to 60 seconds and selects the first visible textbox instead of waiting on a single `.last()` locator.
+- Do not regress: Direct composer detection must tolerate DOM replacement and must only return a currently visible editable element.
+
+## 2026-09-15 - Sequential Comment Phase
+
+- Area: automation/storage/frontend/webhook contract
+- Release: `0.3.0`
+- Symptoms: The executor stopped at the Direct daily limit and could not continue with comments for successfully messaged recipients.
+- Root cause: Runtime state and local jobs modeled Direct messages only, and Instagram publication/comment elements were not implemented.
+- Fix: Added a persisted `messages -> comments -> completed` phase, separate crash-safe comment jobs, shared action timing, comment webhook events, UI counters, and semantic Instagram selectors verified against the saved `@nik.zig` Chrome session. Regular publications are preferred; pinned publications are fallback-only.
+- Files changed: executor storage and workers, Instagram page actions, frontend status, tests, README, and contract instructions.
+- Verification: Real-session read-only DOM inspection plus syntax, contract tests, frontend build, and desktop checks.
+- Do not regress: Never select publications by coordinates or generated CSS classes. Keep local comment success authoritative if the final n8n report fails, and never auto-resend an uncertain comment.
+
 This file records bugs and decisions for the standalone n8n Instagram executor.
 
 ## 2026-08-28 - Standalone N8N Executor Split

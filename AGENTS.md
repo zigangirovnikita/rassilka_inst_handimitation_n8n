@@ -50,7 +50,9 @@ Do not copy, edit, or import the older `rassilka` product app into this reposito
 - Do not allow the same detected Instagram username to be saved as two local profiles. That bypasses per-account limits and mixes operator intent.
 - A successful Instagram send must be marked `sent` locally before reporting status back to n8n. If the final report to n8n times out, keep local status as sent and log a warning.
 - If a job reaches `sending` and then the app crashes/errors before confirmation, mark/recover it as `uncertain` and do not resend it automatically.
-- If n8n returns `no_task`, `completed`, `done`, or `all_done`, disable the executor and show `Рассылка завершена`.
+- In the message phase, reaching the local daily Direct limit or receiving a completed/no-task response switches the executor to comments. In the comment phase, a completed/no-task response disables the executor and shows `Рассылка завершена`.
+- Comments use the same interval and schedule as Direct messages. Prefer the second regular publication, then the only regular publication; use pinned publications only when no regular publication exists.
+- A successful Instagram comment must be marked sent locally before reporting `comment_sent` to n8n. Jobs left in `commenting` become uncertain and must not be resent automatically.
 - Every n8n request has a 3 minute timeout. A timed-out task must not block the next scheduled run forever.
 - Recognize Instagram message buttons in English and Russian, including `Message`, `Send message`, `Сообщение`, `Отправить сообщение`, and `Написать`.
 - Keep desktop runtime cross-platform: macOS uses `runtime/node`, Windows uses `runtime/node.exe`; package the whole `desktop-runtime` directory.
@@ -64,5 +66,8 @@ Use one POST webhook per Instagram profile. Branch inside n8n by the `event` fie
 - `sent`: app confirms message sent in Instagram.
 - `failed`: app reports a skipped or failed recipient.
 - `duplicate_job`: app saw an already-sent `job_id`.
+- `next_comment`: app asks for a recipient and ready `comment_text` after the Direct phase.
+- `comment_sent`: app confirms that Instagram displayed the submitted comment.
+- `comment_failed`: app reports a skipped, failed, or uncertain comment.
 
 The public README contains the user-facing payload examples. Keep README and implementation in sync when changing the contract.

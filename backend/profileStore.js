@@ -66,7 +66,7 @@ export function deleteLocalAccount(db, instagramProfileId) {
   if (!account) throw new Error('Instagram профиль не найден');
   db.exec('BEGIN');
   try {
-    for (const table of ['n8n_executor_jobs', 'n8n_executor_settings', 'event_logs', 'accounts']) {
+    for (const table of ['n8n_executor_comment_jobs', 'n8n_executor_jobs', 'n8n_executor_settings', 'event_logs', 'accounts']) {
       db.prepare(`DELETE FROM ${table} WHERE instagram_profile_id = ?`).run(instagramProfileId);
     }
     db.exec('COMMIT');

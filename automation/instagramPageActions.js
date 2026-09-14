@@ -7,6 +7,21 @@ export function isMessageButtonLabel(label) {
 }
 
 export async function openProfileAndCapture(page, job) {
+  const bodyText = await openInstagramProfile(page, job);
+  await clickMoreDescription(page);
+  await page.waitForTimeout(700);
+  const screenshot = await page.screenshot({ type: 'png', fullPage: false });
+  return {
+    screenshotBase64: screenshot.toString('base64'),
+    result: {
+      can_message: await hasMessageButton(page),
+      is_private: /this account is private|это закрытый аккаунт/i.test(bodyText),
+      page_url: page.url()
+    }
+  };
+}
+
+export async function openInstagramProfile(page, job) {
   const expectedUrl = `https://www.instagram.com/${job.targetUsername}/`;
   await page.goto(job.targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   if (!page.url().startsWith(expectedUrl)) {
@@ -21,17 +36,7 @@ export async function openProfileAndCapture(page, job) {
   if (/sorry, this page isn't available|страница недоступна/i.test(bodyText)) {
     throw new ExecutorJobError('profile_unavailable', 'Профиль недоступен', 'lead');
   }
-  await clickMoreDescription(page);
-  await page.waitForTimeout(700);
-  const screenshot = await page.screenshot({ type: 'png', fullPage: false });
-  return {
-    screenshotBase64: screenshot.toString('base64'),
-    result: {
-      can_message: await hasMessageButton(page),
-      is_private: /this account is private|это закрытый аккаунт/i.test(bodyText),
-      page_url: page.url()
-    }
-  };
+  return bodyText;
 }
 
 export async function sendInstagramMessage(page, messageText) {
@@ -70,12 +75,22 @@ function messageButtonLocator(page) {
 }
 
 async function waitForMessageTextbox(page) {
-  const textbox = page.locator('[contenteditable="true"][role="textbox"], textarea, div[aria-label][contenteditable="true"]').last();
-  await textbox.waitFor({ state: 'visible', timeout: 30_000 })
-    .catch(() => {
-      throw new ExecutorJobError('message_box_missing', 'Поле ввода сообщения недоступно', 'system');
-    });
-  return textbox;
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const candidates = page.locator('[contenteditable="true"][role="textbox"], textarea, div[aria-label][contenteditable="true"]');
+    const count = await candidates.count().catch(() => 0);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = candidates.nth(index);
+      if (await candidate.isVisible().catch(() => false)) return candidate;
+    }
+    await assertNoSendError(page);
+    await page.waitForTimeout(500);
+  }
+  throw new ExecutorJobError(
+    'message_box_missing',
+    `Поле ввода сообщения недоступно после ожидания (${page.url()})`,
+    'system'
+  );
 }
 
 async function confirmInstagramSend(page, textbox, messageText) {

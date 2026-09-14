@@ -13,11 +13,12 @@ import {
 import { ACCOUNT_FAILURE_REASONS, ExecutorJobError, assertNotStopped, classifyError, isLeadFailure } from './executorErrors.js';
 import { isMessageButtonLabel, openProfileAndCapture, sendInstagramMessage } from './instagramPageActions.js';
 import { openChromeContext } from './instagramWorker.js';
+import { processCommentTask, requestNextComment } from './n8nCommentWorker.js';
 import { classifyNextTaskResponse, completionMessage } from './n8nExecutorResponse.js';
+import { N8N_TIMEOUT_MS, postJson } from './n8nWebhookClient.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const MAX_CONSECUTIVE_ERRORS = 3;
-const N8N_TIMEOUT_MS = 3 * 60_000;
 export { isMessageButtonLabel };
 
 export async function runN8nExecutor(db, appRoot, instagramProfileId, control = {}) {
@@ -38,16 +39,33 @@ export async function runN8nExecutor(db, appRoot, instagramProfileId, control = 
       await waitUntilNextCheck(db, instagramProfileId, control, 60_000, 'Вне рабочего времени');
       continue;
     }
-    if (countSentToday(db, instagramProfileId) >= settings.dailyLimit) {
-      await waitUntilNextCheck(db, instagramProfileId, control, 15 * 60_000, 'Дневной лимит исчерпан');
+    if (settings.phase === 'messages' && countSentToday(db, instagramProfileId) >= settings.dailyLimit) {
+      startCommentPhase(db, instagramProfileId);
       continue;
     }
 
     try {
+      if (settings.phase === 'comments') {
+        const commentResult = await requestNextComment(db, instagramProfileId, settings, control);
+        if (commentResult?.completed) {
+          completeExecutor(db, instagramProfileId, commentResult.message || 'Рассылка сообщений и комментариев завершена');
+          break;
+        }
+        if (!commentResult?.task) {
+          setExecutorRuntimeState(db, instagramProfileId, { consecutiveErrors: 0, lastError: '' });
+          await waitUntilNextCheck(db, instagramProfileId, control, 60_000, 'Комментариев пока нет');
+          continue;
+        }
+        await processCommentTask(db, appRoot, instagramProfileId, settings, commentResult.task, control);
+        setExecutorRuntimeState(db, instagramProfileId, { consecutiveErrors: 0, lastError: '' });
+        if (!control.stop) await waitUntilNextAction(db, instagramProfileId, control, settings, 'Ждет следующий комментарий');
+        continue;
+      }
+
       const taskResult = await requestNextTask(db, instagramProfileId, settings, control);
       if (taskResult?.completed) {
-        completeExecutor(db, instagramProfileId, taskResult.message);
-        break;
+        startCommentPhase(db, instagramProfileId);
+        continue;
       }
       if (!taskResult?.task) {
         setExecutorRuntimeState(db, instagramProfileId, { consecutiveErrors: 0, lastError: '' });
@@ -56,7 +74,7 @@ export async function runN8nExecutor(db, appRoot, instagramProfileId, control = 
       }
       await processTask(db, appRoot, instagramProfileId, settings, taskResult.task, control);
       setExecutorRuntimeState(db, instagramProfileId, { consecutiveErrors: 0, lastError: '' });
-      if (!control.stop) await waitUntilNextMessage(db, instagramProfileId, control, settings);
+      if (!control.stop) await waitUntilNextAction(db, instagramProfileId, control, settings, 'Ждет следующее сообщение');
     } catch (error) {
       if (!hasAccount(db, instagramProfileId)) break;
       const current = getExecutorProfile(db, instagramProfileId);
@@ -149,6 +167,7 @@ function completeExecutor(db, instagramProfileId, message = 'Рассылка з
   setExecutorRuntimeState(db, instagramProfileId, {
     enabled: false,
     status: 'completed',
+    phase: 'completed',
     step: message,
     nextRunAt: null,
     currentJobId: null,
@@ -156,6 +175,19 @@ function completeExecutor(db, instagramProfileId, message = 'Рассылка з
     lastError: ''
   });
   logEvent(db, instagramProfileId, 'success', message);
+}
+
+function startCommentPhase(db, instagramProfileId) {
+  setExecutorRuntimeState(db, instagramProfileId, {
+    phase: 'comments',
+    status: 'running',
+    step: 'Переходит к отправке комментариев',
+    nextRunAt: null,
+    currentJobId: null,
+    consecutiveErrors: 0,
+    lastError: ''
+  });
+  logEvent(db, instagramProfileId, 'success', 'Рассылка сообщений завершена, начинается отправка комментариев');
 }
 
 async function processTask(db, appRoot, instagramProfileId, settings, task, control) {
@@ -234,9 +266,9 @@ function extractMessageText(response) {
   return String(response?.message_text || response?.messageText || response?.message?.text || response?.text || '').trim();
 }
 
-async function waitUntilNextMessage(db, instagramProfileId, control, settings) {
+async function waitUntilNextAction(db, instagramProfileId, control, settings, step) {
   const delay = randomIntervalMs(settings.minIntervalMinutes, settings.maxIntervalMinutes);
-  await waitUntilNextCheck(db, instagramProfileId, control, delay, 'Ждет следующего сообщения');
+  await waitUntilNextCheck(db, instagramProfileId, control, delay, step);
 }
 
 async function waitUntilNextCheck(db, instagramProfileId, control, delay, step) {
@@ -255,37 +287,6 @@ async function sleepInterruptibly(milliseconds, control) {
     if (control.stop) return;
     await sleep(Math.min(1000, until - Date.now()));
   }
-}
-
-async function postJson(url, payload, timeoutMs = N8N_TIMEOUT_MS, control = {}) {
-  assertNotStopped(control);
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  control.abortController?.signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    const text = await response.text();
-    const body = parseJson(text) || { text };
-    if (!response.ok) throw new Error(body.error || body.message || `webhook вернул HTTP ${response.status}`);
-    return body;
-  } catch (error) {
-    if (control.stop) throw new ExecutorJobError('stopped', 'Исполнитель остановлен', 'system');
-    if (error.name === 'AbortError') throw new ExecutorJobError('n8n_timeout', 'webhook не ответил за 3 минуты', 'lead');
-    throw error;
-  } finally {
-    clearTimeout(timer);
-    control.abortController?.signal?.removeEventListener('abort', abort);
-  }
-}
-
-function parseJson(text) {
-  try { return JSON.parse(text); } catch { return null; }
 }
 
 function randomIntervalMs(minMinutes, maxMinutes) {

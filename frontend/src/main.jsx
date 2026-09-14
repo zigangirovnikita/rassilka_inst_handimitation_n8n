@@ -181,7 +181,10 @@ function ProfileRow({ profile, open, busy, onToggle, onAction }) {
         </div>
         <StatusPill status={status} enabled={executor.enabled} />
         <div className="profile-metrics">
-          <span>{executor.sentToday || 0}/{executor.dailyLimit || draft.dailyLimit} сегодня</span>
+          <span>Сообщения: {executor.sentToday || 0}/{executor.dailyLimit || draft.dailyLimit}</span>
+          {executor.phase === 'comments' || executor.phase === 'completed' ? (
+            <span>Комментарии: {executor.commentsSentToday || 0}/{executor.dailyLimit || draft.dailyLimit}</span>
+          ) : null}
           <span>{nextRunText}</span>
         </div>
       </button>

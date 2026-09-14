@@ -9,7 +9,10 @@ const files = [
   'automation/instagramWorker.js',
   'automation/executorErrors.js',
   'automation/instagramPageActions.js',
+  'automation/instagramCommentActions.js',
   'automation/n8nExecutorResponse.js',
+  'automation/n8nWebhookClient.js',
+  'automation/n8nCommentWorker.js',
   'automation/n8nExecutorWorker.js',
   'frontend/src/api.js',
   'tests/executor-contract.test.js'

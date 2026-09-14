@@ -5,13 +5,19 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { classifyNextTaskResponse } from '../automation/n8nExecutorResponse.js';
 import { isMessageButtonLabel } from '../automation/n8nExecutorWorker.js';
+import { chooseCommentPublication, isPublicationHref } from '../automation/instagramCommentActions.js';
 import { initDatabase } from '../backend/storage.js';
 import { findAccountByUsername, upsertAccount } from '../backend/profileStore.js';
 import { isAllowedOrigin } from '../backend/apiSecurity.js';
 import {
   ensureExecutorProfile,
+  finishCommentJob,
+  getCommentJob,
   getExecutorJob,
   listExecutorProfiles,
+  setExecutorEnabled,
+  setExecutorRuntimeState,
+  upsertCommentJob,
   upsertExecutorJob
 } from '../backend/n8nExecutorStore.js';
 
@@ -86,6 +92,71 @@ test('builds target URL from username instead of trusting n8n target_url', () =>
     });
     assert.equal(job.targetUrl, 'https://www.instagram.com/real_user/');
     assert.equal(getExecutorJob(db, 'igp_test_target', 'job_1').targetUsername, 'real_user');
+  } finally {
+    cleanup();
+  }
+});
+
+test('chooses a regular publication before pinned publications', () => {
+  const selected = chooseCommentPublication([
+    { href: '/person/reel/pinned-1/', pinned: true },
+    { href: '/person/reel/pinned-2/', pinned: true },
+    { href: '/person/p/regular-1/', pinned: false },
+    { href: '/person/p/regular-2/', pinned: false }
+  ]);
+  assert.equal(selected.href, '/person/p/regular-2/');
+  assert.equal(selected.selection, 'second_regular');
+});
+
+test('uses pinned publication only when there are no regular publications', () => {
+  const selected = chooseCommentPublication([
+    { href: '/person/reel/pinned-1/', pinned: true },
+    { href: '/person/reel/pinned-2/', pinned: true }
+  ]);
+  assert.equal(selected.href, '/person/reel/pinned-2/');
+  assert.equal(selected.selection, 'second_pinned_fallback');
+});
+
+test('uses the only regular publication and ignores pinned ones', () => {
+  const selected = chooseCommentPublication([
+    { href: '/person/reel/pinned-1/', pinned: true },
+    { href: '/person/p/regular-1/', pinned: false },
+    { href: '/person/reel/pinned-2/', pinned: true }
+  ]);
+  assert.equal(selected.href, '/person/p/regular-1/');
+  assert.equal(selected.selection, 'only_regular');
+});
+
+test('accepts current Instagram profile publication links', () => {
+  assert.equal(isPublicationHref('/person/reel/ABC_123/', 'person'), true);
+  assert.equal(isPublicationHref('/person/p/ABC-123/', 'person'), true);
+  assert.equal(isPublicationHref('/p/ABC123/', 'person'), true);
+  assert.equal(isPublicationHref('/another/reel/ABC123/', 'person'), false);
+});
+
+test('stores comment jobs separately and preserves their phase', () => {
+  const { db, cleanup } = makeDb();
+  try {
+    upsertAccount(db, {
+      instagramProfileId: 'igp_test_comment',
+      username: 'sender',
+      profileDir: '/tmp/igp_test_comment',
+      connected: true
+    });
+    ensureExecutorProfile(db, 'igp_test_comment');
+    setExecutorRuntimeState(db, 'igp_test_comment', { phase: 'comments' });
+    const job = upsertCommentJob(db, 'igp_test_comment', {
+      job_id: 'comment_job_1',
+      target_username: 'recipient',
+      comment_text: 'Проверочный комментарий'
+    });
+    finishCommentJob(db, 'igp_test_comment', job.jobId, 'sent', '', 'https://www.instagram.com/p/ABC123/');
+    assert.equal(getCommentJob(db, 'igp_test_comment', job.jobId).status, 'sent');
+    assert.equal(listExecutorProfiles(db)[0].executor.phase, 'comments');
+
+    setExecutorRuntimeState(db, 'igp_test_comment', { phase: 'completed' });
+    setExecutorEnabled(db, 'igp_test_comment', true);
+    assert.equal(listExecutorProfiles(db)[0].executor.phase, 'messages');
   } finally {
     cleanup();
   }
