@@ -149,3 +149,13 @@ This file records bugs and decisions for the standalone n8n Instagram executor.
 - Files changed: `src-tauri/src/main.rs`, version metadata, Windows release workflow, `docs/BUG_FIX_LOG.md`.
 - Verification: Source checks, tests, frontend build, Rust tests/check, Windows NSIS build, clean install, backend health check, and visible-window launch check.
 - Do not regress: Windows release builds must open only the Tauri interface; debug builds may retain a console for diagnostics.
+
+## 2026-09-15 - Mac 0.3.0 Release Workflow
+
+- Area: desktop/packaging/mac
+- Symptoms: GitHub Release `v0.3.0` had the working Windows installer asset, but no automated Mac DMG asset for the same app version.
+- Root cause: The repository only had a Windows release workflow; Mac packaging still depended on a local manual DMG build.
+- Fix: Added a macOS arm64 release workflow that installs dependencies, runs source checks and tests, builds the `aarch64-apple-darwin` Tauri app, packages `Instagram-Agent-n8n-0.3.0-aarch64.dmg`, and attaches it to the requested GitHub Release.
+- Files changed: `.github/workflows/macos-release.yml`, `.github/release-mac-v0.3.0`, `installers/README.md`, `docs/BUG_FIX_LOG.md`.
+- Verification: Pending GitHub Actions macOS runner after push; local source files were checked for version and workflow consistency.
+- Do not regress: Keep Mac release assets attached to the same version tag as Windows; do not leave Mac distribution as a manual-only local script when shipping a public release.

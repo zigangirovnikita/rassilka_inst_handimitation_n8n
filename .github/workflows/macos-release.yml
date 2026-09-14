@@ -1,0 +1,73 @@
+name: macOS Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/release-mac-v0.3.0
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag to attach the DMG to
+        required: true
+        default: v0.3.0
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build macOS app
+        run: pnpm run build:mac
+
+      - name: Package DMG
+        run: node scripts/package-mac-dmg.mjs
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Instagram-Agent-n8n-macos-aarch64
+          path: installers/Instagram-Agent-n8n-0.3.0-aarch64.dmg
+          if-no-files-found: error
+
+      - name: Attach DMG to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || 'v0.3.0' }}
+          files: installers/Instagram-Agent-n8n-0.3.0-aarch64.dmg
+          fail_on_unmatched_files: true
+          overwrite_files: true
